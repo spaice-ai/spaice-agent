@@ -1,0 +1,2 @@
+[console_scripts]
+spaice-agent = spaice_agent.cli:main
