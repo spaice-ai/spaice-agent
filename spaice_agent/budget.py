@@ -232,7 +232,13 @@ class DailyCounter:
                 pass
 
     def can_fire(self, tool: str, cap: int) -> bool:
-        """Return True if *tool* is below its *cap* today.
+        """Return True if *tool* is below its *cap* today (racy — use only as hint).
+
+        Codex 2026-05-03 warning: a split ``can_fire → increment`` pattern is
+        racy under concurrent fires. Two workers that both observe ``29 < 30``
+        will each call ``increment`` and land at 31. Use ``check_and_fire``
+        instead for any real cap enforcement; this method is kept only for
+        read-only dashboards and logging.
 
         cap == 0 means disabled — always returns False.
         cap < 0 treated as unlimited — always returns True.
@@ -245,8 +251,54 @@ class DailyCounter:
         current = int(state["counters"].get(tool, 0))
         return current < cap
 
+    def check_and_fire(self, tool: str, cap: int) -> bool:
+        """Atomic check-and-increment. Returns True and increments if under
+        cap; returns False without incrementing if at cap.
+
+        This is the correct API for cap enforcement — ``can_fire`` + later
+        ``increment`` is racy and will let two concurrent callers both slip
+        through.
+
+        Raises :class:`BudgetExceeded` if the lock cannot be acquired within
+        its timeout. Callers MUST handle that — returning a guessed count
+        like the old ``increment`` behaviour would pretend we enforced the
+        cap when we didn't.
+
+        cap == 0 disabled → returns False, no increment.
+        cap < 0 unlimited → increments and returns True.
+        """
+        if cap == 0:
+            return False
+
+        try:
+            with portalocker.Lock(
+                self.lock_path, mode="a", timeout=5,
+                flags=portalocker.LOCK_EX,
+            ):
+                state = self._apply_rollover(self._read_state_unlocked())
+                current = int(state["counters"].get(tool, 0))
+                if cap >= 0 and current >= cap:
+                    return False
+                state["counters"][tool] = current + 1
+                self._write_state_atomic(state)
+                return True
+        except portalocker.exceptions.LockException as exc:
+            raise BudgetExceeded(
+                f"Could not acquire daily_counter lock for agent "
+                f"'{self.agent_id}', tool '{tool}': {exc}"
+            ) from exc
+
     def increment(self, tool: str) -> int:
-        """Atomically increment the counter for *tool* and return the new count."""
+        """Atomically increment the counter for *tool* and return the new count.
+
+        Prefer :meth:`check_and_fire` for cap enforcement — this method does
+        NOT check caps and is only for callers that want an unconditional bump
+        (e.g. recording retries, or when the cap decision already happened).
+
+        Raises :class:`BudgetExceeded` on lock timeout; callers decide how to
+        handle — silent best-effort count is what caused the original Codex
+        finding.
+        """
         try:
             with portalocker.Lock(
                 self.lock_path, mode="a", timeout=5,
@@ -258,13 +310,10 @@ class DailyCounter:
                 self._write_state_atomic(state)
                 return new_count
         except portalocker.exceptions.LockException as exc:
-            logger.warning(
-                "daily_counter lock timed out for agent '%s': %s",
-                self.agent_id, exc,
-            )
-            # Degraded — return best-effort current+1 without persisting
-            state = self._apply_rollover(self._read_state_unlocked())
-            return int(state["counters"].get(tool, 0)) + 1
+            raise BudgetExceeded(
+                f"Could not acquire daily_counter lock for agent "
+                f"'{self.agent_id}', tool '{tool}': {exc}"
+            ) from exc
 
     def current_count(self, tool: str) -> int:
         """Current day's count for *tool*, rollover-aware."""

@@ -193,13 +193,18 @@ class OpenRouterClient:
         *,
         referer: str = "https://spaice.local/agent",
         title: str = "SPAICE Agent Framework",
-        timeout_s: float = 30.0,
+        timeout_s: float = 10.0,
         max_retries: int = 2,
         client: Optional[httpx.AsyncClient] = None,
     ) -> None:
         if not api_key:
             raise ValueError("api_key is required")
         self._api_key = api_key
+        # Codex 2026-05-03: default timeout lowered from 30s to 10s —
+        # hook budgets are typically 3-8s per stage, so 30s would dwarf
+        # them and leave the coroutine blocking the event loop for half
+        # a minute while the outer watchdog slept. Callers needing a
+        # longer allowance must pass timeout_s explicitly.
         self._default_timeout_s = timeout_s
         self._max_retries = max(0, max_retries)
 
@@ -231,8 +236,16 @@ class OpenRouterClient:
         max_tokens: int,
         temperature: float = 0.2,
         timeout_s: Optional[float] = None,
+        deadline_s: Optional[float] = None,
     ) -> ChatResult:
-        """POST /chat/completions with retry + Retry-After handling."""
+        """POST /chat/completions with retry + Retry-After handling.
+
+        ``deadline_s`` (Codex 2026-05-03 fix) is an absolute wall-clock
+        budget for the whole call including retries. If a retry's required
+        sleep would push us past the deadline, we fail the call immediately
+        rather than sleep through it and get cancelled by the caller's
+        outer ``asyncio.wait_for``.
+        """
         payload: dict[str, Any] = {
             "model": model,
             "messages": messages,
@@ -242,22 +255,45 @@ class OpenRouterClient:
         call_timeout = timeout_s if timeout_s is not None else self._default_timeout_s
 
         started = datetime.now(tz=timezone.utc)
+        start_mono = asyncio.get_event_loop().time()
         attempt = 0  # number of retries performed
 
+        def _remaining_budget() -> Optional[float]:
+            if deadline_s is None:
+                return None
+            return deadline_s - (asyncio.get_event_loop().time() - start_mono)
+
         while True:
+            # Respect deadline BEFORE firing the next attempt
+            remaining = _remaining_budget()
+            if remaining is not None and remaining <= 0:
+                raise ServerError(
+                    f"deadline exceeded before attempt {attempt + 1}",
+                )
+
+            # Cap per-call timeout by remaining budget when deadline set
+            effective_timeout = call_timeout
+            if remaining is not None:
+                effective_timeout = min(call_timeout, remaining)
+
             try:
                 response = await self._client.post(
                     f"{self.BASE_URL}/chat/completions",
                     json=payload,
-                    timeout=call_timeout,
+                    timeout=effective_timeout,
                 )
             except asyncio.CancelledError:
                 raise
             except httpx.TimeoutException as e:
-                # Treat httpx timeout like a transient error
                 if attempt >= self._max_retries:
                     raise ServerError(f"timeout: {e}") from e
                 sleep_for = (attempt + 1) * 1.0
+                # Deadline-aware: if sleeping would overshoot, fail now
+                remaining = _remaining_budget()
+                if remaining is not None and sleep_for >= remaining:
+                    raise ServerError(
+                        f"timeout and backoff would exceed deadline: {e}"
+                    ) from e
                 logger.warning(
                     "OpenRouter timeout, retrying in %.1fs (attempt %d/%d)",
                     sleep_for, attempt + 1, self._max_retries,
@@ -266,10 +302,14 @@ class OpenRouterClient:
                 attempt += 1
                 continue
             except httpx.HTTPError as e:
-                # Transport error (DNS, connection refused, reset)
                 if attempt >= self._max_retries:
                     raise ServerError(f"transport error: {e}") from e
                 sleep_for = (attempt + 1) * 1.0
+                remaining = _remaining_budget()
+                if remaining is not None and sleep_for >= remaining:
+                    raise ServerError(
+                        f"transport error and backoff would exceed deadline: {e}"
+                    ) from e
                 logger.warning(
                     "OpenRouter transport error, retrying in %.1fs: %s",
                     sleep_for, e,
@@ -298,6 +338,14 @@ class OpenRouterClient:
                 raise error
 
             sleep_for = retry_after if retry_after is not None else (attempt + 1) * 1.0
+
+            # Deadline-aware: if sleeping would overshoot the caller's
+            # deadline, fail now with structured error rather than sleep
+            # into a CancelledError from the outer wait_for.
+            remaining = _remaining_budget()
+            if remaining is not None and sleep_for >= remaining:
+                raise error
+
             logger.warning(
                 "OpenRouter %s, retrying in %.1fs (attempt %d/%d)",
                 type(error).__name__, sleep_for, attempt + 1, self._max_retries,

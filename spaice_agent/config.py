@@ -137,6 +137,15 @@ class _Search(BaseModel):
     merge: _Merge
     triggers: _SearchTriggers
 
+    @model_validator(mode="after")
+    def _check_providers_when_enabled(self) -> _Search:
+        if self.enabled and not self.providers:
+            raise ValueError(
+                "search.enabled=true but no providers configured; "
+                "add at least one provider or set enabled=false"
+            )
+        return self
+
 
 class _PipelineStage(BaseModel):
     """A single stage inside the consensus pipeline."""
@@ -280,18 +289,35 @@ def load_agent_config(agent_id: str) -> AgentConfig:
     Raises:
         ConfigNotFoundError: If the config file does not exist.
         ConfigError: If the YAML is syntactically or semantically invalid,
-            or if the ``agent_id`` inside the file does not match the
-            requested *agent_id*.
+            if the ``agent_id`` inside the file does not match the
+            requested *agent_id*, or if *agent_id* fails the slug pattern
+            (path-traversal guard).
     """
+    # ---- Path-traversal guard: validate BEFORE touching the filesystem.
+    # A caller passing "../aurora" would otherwise walk up the tree and
+    # read a neighbouring agent's config — breaking Jarvis/Aurora isolation.
+    if not isinstance(agent_id, str) or not AGENT_ID_PATTERN.match(agent_id):
+        raise ConfigError(
+            f"Invalid agent_id {agent_id!r}: must match {AGENT_ID_PATTERN.pattern}"
+        )
+
     config_path = Path(f"~/.spaice-agents/{agent_id}/config.yaml").expanduser()
     if not config_path.is_file():
         raise ConfigNotFoundError(f"Config file not found: {config_path}")
 
     try:
-        with config_path.open("r") as fh:
+        with config_path.open("r", encoding="utf-8") as fh:
             raw = yaml.safe_load(fh)
     except yaml.YAMLError as exc:
         raise ConfigError(f"Invalid YAML in {config_path}: {exc}") from exc
+    except UnicodeDecodeError as exc:
+        raise ConfigError(
+            f"Config file {config_path} is not valid UTF-8: {exc}"
+        ) from exc
+    except OSError as exc:
+        raise ConfigError(
+            f"Could not read {config_path}: {exc}"
+        ) from exc
 
     if not isinstance(raw, dict):
         raise ConfigError(f"Top-level YAML in {config_path} must be a mapping")

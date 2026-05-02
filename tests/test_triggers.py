@@ -137,7 +137,9 @@ class TestSearchTriggers:
         assert not search_triggered("before https://example.com/doc and then more text", config)
 
     def test_too_short(self, config):
-        assert not search_triggered("find me", config)
+        # Pleasantries under 5 chars don't fire
+        assert not search_triggered("hi", config)
+        assert not search_triggered("thx", config)
 
     def test_no_trigger(self, config):
         assert not search_triggered("thanks, that's all for now", config)
@@ -234,7 +236,9 @@ class TestConsensusTriggers:
     # --- Edge cases ---
 
     def test_too_short(self, config):
-        assert not consensus_triggered("plan it", config)  # <20 chars
+        # Pleasantries under 5 chars don't fire
+        assert not consensus_triggered("hi", config)
+        assert not consensus_triggered("", config)
 
     def test_no_trigger(self, config):
         assert not consensus_triggered("thanks for the help earlier today", config)
@@ -258,12 +262,110 @@ class TestConsensusTriggers:
 class TestPatternCache:
     def test_cache_populated_after_first_call(self, config):
         _COMPILED.clear()
-        assert config.agent_id not in _COMPILED
+        assert not _COMPILED
         consensus_triggered("let's plan the deployment carefully", config)
-        assert config.agent_id in _COMPILED
+        # Cache key is now "<agent_id>:<id(config)>"
+        expected_key = f"{config.agent_id}:{id(config)}"
+        assert expected_key in _COMPILED
 
     def test_cache_reused(self, config):
         consensus_triggered("let's plan the deployment carefully", config)
-        first = _COMPILED[config.agent_id]
+        key = f"{config.agent_id}:{id(config)}"
+        first = _COMPILED[key]
         consensus_triggered("we need to decide soon or miss the window", config)
-        assert _COMPILED[config.agent_id] is first
+        assert _COMPILED[key] is first
+
+    def test_cache_invalidates_on_new_config_instance(self, config):
+        """Codex 2026-05-03 fix: a NEW AgentConfig instance for the same
+        agent_id must NOT reuse the old cache (different id() means
+        different compiled patterns)."""
+        consensus_triggered("plan this carefully", config)
+        key1 = f"{config.agent_id}:{id(config)}"
+        assert key1 in _COMPILED
+
+        # Build a new config with a different trigger set
+        config2_data = config.model_dump()
+        config2_data["consensus"]["triggers"]["words"] = ["forge", "argo"]
+        config2 = type(config).model_validate(config2_data)
+        # Same agent_id, different id(config)
+        assert config2.agent_id == config.agent_id
+        assert id(config2) != id(config)
+
+        consensus_triggered("forge a new plan", config2)
+        key2 = f"{config2.agent_id}:{id(config2)}"
+        assert key2 in _COMPILED
+        assert _COMPILED[key1] is not _COMPILED[key2]
+
+
+# ============================================================
+# Codex 5.3 retroactive fixes
+# ============================================================
+
+
+class TestCodexFixes:
+    def test_short_consensus_imperatives_still_fire(self, config):
+        """'plan rollout', 'audit logs', 'review this' are all legitimate
+        triggers. The old <20 guard silently disabled them."""
+        assert consensus_triggered("plan rollout", config)
+        assert consensus_triggered("audit logs", config)
+        assert consensus_triggered("review this", config)
+        assert consensus_triggered("decide now", config)
+
+    def test_short_search_imperatives_still_fire(self, config):
+        """'google it', 'find me X' are legitimate short search requests.
+        The old <10 guard silently disabled some."""
+        assert search_triggered("google it", config)
+        # find me phrase is 10 chars with punctuation
+        assert search_triggered("find me X", config)
+
+    def test_fenced_code_with_inner_backticks_does_not_leak(self, config):
+        """The old _strip_excluded_regions used r'`[^`]*`' which closes
+        on the FIRST inner backtick, leaving the rest of the fence
+        (including 'plan/decide/audit') exposed to matching."""
+        # A fenced block containing a literal backtick that would otherwise
+        # close the regex prematurely:
+        msg = (
+            "here's an example:\n"
+            "```python\n"
+            "s = f'foo `{x}` bar'   # decide = True; plan it\n"
+            "```\n"
+            "let me know"
+        )
+        # The keywords inside the fence must NOT fire consensus
+        assert not consensus_triggered(msg, config)
+
+    def test_triple_backtick_fence_stripped(self, config):
+        msg = (
+            "background:\n"
+            "```\n"
+            "def plan(x): pass\n"
+            "def decide(y): pass\n"
+            "```\n"
+            "anyway, thanks"
+        )
+        assert not consensus_triggered(msg, config)
+
+    def test_unpaired_backtick_doesnt_swallow_keywords(self, config):
+        """A single stray backtick should not eat the rest of the line."""
+        # If the single-backtick regex were greedy across newlines, this
+        # would swallow "decide" and suppress the trigger.
+        msg = "the backtick char is ` and we still need to decide on it"
+        assert consensus_triggered(msg, config)
+
+    def test_invalid_regex_in_config_doesnt_crash(self, monkeypatch, config):
+        """A single typo in ops config (malformed regex) must NOT take
+        down the whole hook — log and skip the bad pattern, keep valid ones."""
+        _COMPILED.clear()
+
+        # Build a config with a bad regex among the anchors
+        config_data = config.model_dump()
+        config_data["search"]["triggers"]["phrase_anchors"] = [
+            r"(unclosed-group",  # malformed
+            r"^\s*look up",      # valid
+        ]
+        bad_config = type(config).model_validate(config_data)
+
+        # Must not raise
+        assert search_triggered("look up the price", bad_config)
+        # And must not match gibberish that only the bad pattern might have matched
+        # (just ensure we got here without exception)

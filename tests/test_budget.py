@@ -238,3 +238,103 @@ class TestBudgetExceeded:
     def test_importable(self):
         from spaice_agent.budget import BudgetExceeded as BE
         assert BE is BudgetExceeded
+
+
+# ============================================================
+# Codex 5.3 retroactive fixes
+# ============================================================
+
+
+class TestCodexFixes:
+    def test_check_and_fire_atomic_increment(self, tmp_path):
+        """check_and_fire returns True once, then False at cap."""
+        dc = DailyCounter("jarvis", base_dir=tmp_path)
+        # cap=3: fires 1,2,3 succeed; 4th denied
+        assert dc.check_and_fire("search", cap=3) is True
+        assert dc.check_and_fire("search", cap=3) is True
+        assert dc.check_and_fire("search", cap=3) is True
+        assert dc.check_and_fire("search", cap=3) is False
+        assert dc.current_count("search") == 3
+
+    def test_check_and_fire_cap_zero_disabled(self, tmp_path):
+        dc = DailyCounter("jarvis", base_dir=tmp_path)
+        assert dc.check_and_fire("search", cap=0) is False
+        assert dc.current_count("search") == 0
+
+    def test_check_and_fire_cap_negative_unlimited(self, tmp_path):
+        dc = DailyCounter("jarvis", base_dir=tmp_path)
+        for _ in range(5):
+            assert dc.check_and_fire("search", cap=-1) is True
+        assert dc.current_count("search") == 5
+
+    def test_check_and_fire_concurrent_respects_cap(self, tmp_path):
+        """THE CRITICAL CODEX FIX: concurrent callers must not exceed cap.
+
+        Prior can_fire+increment split let two workers both observe
+        '29 < 30' and both bump to 30,31 — overshooting the cap.
+        """
+        import threading
+        dc = DailyCounter("jarvis", base_dir=tmp_path)
+        CAP = 50
+        fired = []
+        fired_lock = threading.Lock()
+
+        def worker():
+            for _ in range(20):
+                if dc.check_and_fire("search", cap=CAP):
+                    with fired_lock:
+                        fired.append(1)
+
+        threads = [threading.Thread(target=worker) for _ in range(10)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        # Must NOT exceed cap. Prior implementation could land at 55-60.
+        assert dc.current_count("search") == CAP
+        assert len(fired) == CAP
+
+    def test_check_and_fire_lock_timeout_raises(self, tmp_path, monkeypatch):
+        """When lock can't be acquired, MUST raise BudgetExceeded, not
+        silently pretend the fire happened."""
+        import portalocker
+        dc = DailyCounter("jarvis", base_dir=tmp_path)
+
+        class _FailingLock:
+            def __init__(self, *a, **kw): pass
+            def __enter__(self):
+                raise portalocker.exceptions.LockException("timeout")
+            def __exit__(self, *a): pass
+
+        monkeypatch.setattr(portalocker, "Lock", _FailingLock)
+
+        with pytest.raises(BudgetExceeded):
+            dc.check_and_fire("search", cap=10)
+
+    def test_increment_lock_timeout_raises(self, tmp_path, monkeypatch):
+        """Old increment silently returned a best-effort count on lock
+        timeout, leading to lost updates. Must now raise."""
+        import portalocker
+        dc = DailyCounter("jarvis", base_dir=tmp_path)
+
+        class _FailingLock:
+            def __init__(self, *a, **kw): pass
+            def __enter__(self):
+                raise portalocker.exceptions.LockException("timeout")
+            def __exit__(self, *a): pass
+
+        monkeypatch.setattr(portalocker, "Lock", _FailingLock)
+
+        with pytest.raises(BudgetExceeded):
+            dc.increment("search")
+
+    def test_can_fire_still_works_as_hint(self, tmp_path):
+        """can_fire is now documented as racy/hint only, but must still
+        return correct values for read-only use (cost dashboard)."""
+        dc = DailyCounter("jarvis", base_dir=tmp_path)
+        assert dc.can_fire("search", cap=10) is True
+        for _ in range(10):
+            dc.check_and_fire("search", cap=10)
+        assert dc.can_fire("search", cap=10) is False
+        assert dc.current_count("search") == 10

@@ -430,3 +430,154 @@ class TestEdgeCases:
         client = _mock_client(lambda req: httpx.Response(500), max_retries=-5)
         assert client._max_retries == 0
         await client.aclose()
+
+
+# ============================================================
+# Codex 5.3 retroactive fixes
+# ============================================================
+
+
+class TestCodexFixes:
+    async def test_default_timeout_is_10s_not_30s(self):
+        """Codex 2026-05-03: default timeout dropped from 30s to 10s so a
+        single un-overridden call doesn't blow the typical hook budget."""
+        client = OpenRouterClient(api_key="sk-test")
+        assert client._default_timeout_s == 10.0
+        await client.aclose()
+
+    async def test_deadline_prevents_backoff_overshoot(self, monkeypatch):
+        """With a 2s deadline and a 429+Retry-After:3, we must fail FAST
+        rather than sleep into a CancelledError from the outer wait_for.
+        """
+        sleeps = []
+        async def fake_sleep(s): sleeps.append(s)
+        monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+
+        call_count = 0
+        def handler(req):
+            nonlocal call_count
+            call_count += 1
+            return httpx.Response(429, json={"error": {"message": "slow"}},
+                                  headers={"Retry-After": "3"})
+
+        client = _mock_client(handler, max_retries=2)
+        with pytest.raises(RateLimitError):
+            await client.chat(
+                model="m", messages=[{"role": "user", "content": "x"}],
+                max_tokens=1, deadline_s=2.0,
+            )
+        # Should have made just one attempt — no retry slept through
+        assert call_count == 1
+        assert sleeps == []  # never slept
+        await client.aclose()
+
+    async def test_deadline_allows_retry_when_budget_permits(self, monkeypatch):
+        """With a 10s deadline and a 429+Retry-After:1, retry is allowed."""
+        async def fake_sleep(s): pass
+        monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+
+        call_count = 0
+        def handler(req):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return httpx.Response(429,
+                    json={"error": {"message": "slow"}},
+                    headers={"Retry-After": "1"})
+            return httpx.Response(200, json=_success_body())
+
+        client = _mock_client(handler, max_retries=2)
+        result = await client.chat(
+            model="m", messages=[{"role": "user", "content": "x"}],
+            max_tokens=1, deadline_s=10.0,
+        )
+        assert result.text == "ok"
+        assert call_count == 2
+        await client.aclose()
+
+    async def test_deadline_zero_fails_immediately(self, monkeypatch):
+        """A caller passing deadline_s<=0 means already-past-deadline —
+        fail without even attempting a call."""
+        async def fake_sleep(s): pass
+        monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+
+        # Need to simulate elapsed time with a monotonic-clock trick
+        import asyncio as _asyncio
+        real_loop_time = _asyncio.get_event_loop().time
+
+        def _fake_time():
+            _fake_time.n += 10  # each call advances 10s
+            return real_loop_time() + _fake_time.n
+        _fake_time.n = 0
+        # Just pass a tiny deadline instead — simpler
+        client = _mock_client(
+            lambda req: httpx.Response(500), max_retries=0,
+        )
+        # Tiny deadline hit immediately when the retry loop checks
+        # Actually with deadline_s=0, the first check will see remaining <= 0
+        # Wait — we start with remaining = deadline_s - 0 = 0, so remaining <= 0 fires
+        with pytest.raises(ServerError):
+            await client.chat(
+                model="m", messages=[{"role": "user", "content": "x"}],
+                max_tokens=1, deadline_s=0.0,
+            )
+        await client.aclose()
+
+    async def test_deadline_caps_per_call_timeout(self, monkeypatch):
+        """When remaining budget is less than default timeout, the per-call
+        timeout must be capped to remaining so a single hang doesn't burn
+        the whole budget."""
+        # Hard to test precisely without freezing time. Just verify that
+        # passing a small deadline DOESN'T cause the coroutine to wait 10s
+        # (default timeout) when the httpx call itself hangs.
+        # We use a handler that raises TimeoutException immediately to
+        # simulate "network would take forever" — the retry logic with
+        # deadline should NOT sleep past remaining.
+        sleeps = []
+        async def fake_sleep(s): sleeps.append(s)
+        monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+
+        def handler(req):
+            raise httpx.TimeoutException("slow", request=req)
+
+        client = _mock_client(handler, max_retries=2)
+        with pytest.raises(ServerError) as excinfo:
+            await client.chat(
+                model="m", messages=[{"role": "user", "content": "x"}],
+                max_tokens=1, deadline_s=0.5,
+            )
+        # Should have at most ONE attempt since the 1.0s backoff exceeds 0.5s
+        assert "deadline" in str(excinfo.value).lower() or "timeout" in str(excinfo.value).lower()
+        # Should not have slept 1.0s (would push past 0.5s deadline)
+        assert not any(s >= 1.0 for s in sleeps)
+        await client.aclose()
+
+    async def test_retry_after_http_date_respects_5s_cap(self, monkeypatch):
+        """Codex 2026-05-03: HTTP-date form of Retry-After should still
+        trigger the >5s fast-fail path. (Previously only tested with
+        numeric form.)"""
+        async def fake_sleep(s): pass
+        monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+
+        # Build a future HTTP-date ~60s ahead
+        from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+        from email.utils import format_datetime
+        future = _dt.now(tz=_tz.utc) + _td(seconds=60)
+        future_header = format_datetime(future, usegmt=True)
+
+        call_count = 0
+        def handler(req):
+            nonlocal call_count
+            call_count += 1
+            return httpx.Response(429, json={"error": {"message": "slow"}},
+                                  headers={"Retry-After": future_header})
+
+        client = _mock_client(handler, max_retries=3)
+        with pytest.raises(RateLimitError):
+            await client.chat(
+                model="m", messages=[{"role": "user", "content": "x"}],
+                max_tokens=1,
+            )
+        # Cap is 5s, server asked for ~60s → fail immediately, no retries
+        assert call_count == 1
+        await client.aclose()

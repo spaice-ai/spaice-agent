@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 from textwrap import dedent
 
@@ -293,3 +294,91 @@ def test_invalid_agent_id_pattern(fake_home):
     p.write_text(VALID_YAML.replace("agent_id: test-agent", "agent_id: BadCaps"))
     with pytest.raises(ConfigError):
         load_agent_config("BadCaps")
+
+
+# ---------------------------------------------------------------------------
+# Codex 5.3 retroactive review — high-severity fixes
+# ---------------------------------------------------------------------------
+
+
+def test_path_traversal_agent_id_rejected_before_disk_read(fake_home, tmp_path):
+    """Codex 2026-05-03: 'agent_id="../aurora"' must be rejected BEFORE
+    the filesystem is touched. Path traversal guards Jarvis/Aurora isolation.
+    """
+    # Seed a file the traversal WOULD reach
+    neighbour = fake_home / "aurora" / "config.yaml"
+    neighbour.parent.mkdir(parents=True)
+    neighbour.write_text(VALID_YAML)  # irrelevant — we must reject before reaching it
+
+    # Caller passes a traversal slug
+    with pytest.raises(ConfigError) as excinfo:
+        load_agent_config("../aurora")
+    assert "invalid agent_id" in str(excinfo.value).lower()
+
+
+def test_agent_id_slash_rejected(fake_home):
+    with pytest.raises(ConfigError):
+        load_agent_config("foo/bar")
+
+
+def test_agent_id_absolute_path_rejected(fake_home):
+    with pytest.raises(ConfigError):
+        load_agent_config("/etc/passwd")
+
+
+def test_agent_id_empty_rejected(fake_home):
+    with pytest.raises(ConfigError):
+        load_agent_config("")
+
+
+def test_agent_id_none_rejected(fake_home):
+    with pytest.raises(ConfigError):
+        load_agent_config(None)  # type: ignore[arg-type]
+
+
+def test_search_enabled_with_empty_providers_rejected(fake_home):
+    """Codex 2026-05-03: contract violation — search.enabled=true
+    requires at least one provider, else the pipeline crashes at runtime.
+    """
+    import yaml as _yaml
+    p = fake_home / ".spaice-agents" / "noprov" / "config.yaml"
+    p.parent.mkdir(parents=True)
+    data = _yaml.safe_load(VALID_YAML)
+    data["agent_id"] = "noprov"
+    data["search"]["providers"] = []
+    p.write_text(_yaml.safe_dump(data))
+    with pytest.raises(ConfigError) as excinfo:
+        load_agent_config("noprov")
+    assert "provider" in str(excinfo.value).lower()
+
+
+def test_unreadable_config_raises_config_error(fake_home, monkeypatch):
+    """Codex 2026-05-03: OSError on file read must become ConfigError,
+    not leak as raw exception."""
+    p = fake_home / ".spaice-agents" / "unreadable" / "config.yaml"
+    p.parent.mkdir(parents=True)
+    p.write_text(VALID_YAML)
+
+    original_open = Path.open
+    def flaky_open(self, *args, **kwargs):
+        if self == p:
+            raise PermissionError("simulated chmod 000")
+        return original_open(self, *args, **kwargs)
+    monkeypatch.setattr(Path, "open", flaky_open)
+
+    with pytest.raises(ConfigError) as excinfo:
+        load_agent_config("unreadable")
+    assert "could not read" in str(excinfo.value).lower()
+
+
+def test_non_utf8_config_raises_config_error(fake_home):
+    """Codex 2026-05-03: UnicodeDecodeError on Windows/non-UTF locale
+    must become ConfigError, not leak."""
+    p = fake_home / ".spaice-agents" / "notutf8" / "config.yaml"
+    p.parent.mkdir(parents=True)
+    # Write Latin-1 bytes that contain a non-UTF-8 sequence
+    p.write_bytes(b"agent_id: notutf8\nname: caf\xe9\n")
+    with pytest.raises(ConfigError) as excinfo:
+        load_agent_config("notutf8")
+    msg = str(excinfo.value).lower()
+    assert "utf-8" in msg or "unicode" in msg or "invalid" in msg
