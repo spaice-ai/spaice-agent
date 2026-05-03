@@ -105,7 +105,7 @@ class TestSearchTriggers:
         assert matched_search_reason("look up the current Exa pricing", config)
 
     def test_search_for_phrase(self, config):
-        assert search_triggered("search for Control4 EA-3 datasheet", config)
+        assert search_triggered("search for automation-controller datasheet", config)
 
     def test_find_me_phrase(self, config):
         assert search_triggered("find me a good 4K camera for outdoor", config)
@@ -117,7 +117,7 @@ class TestSearchTriggers:
         assert search_triggered("google Sentrol reed switches for exterior doors", config)
 
     def test_current_price(self, config):
-        assert search_triggered("what's the current price of Inception panels these days", config)
+        assert search_triggered("what's the current price of alarm panels these days", config)
 
     def test_latest_release(self, config):
         assert search_triggered("show me the latest release for basalte keypads", config)

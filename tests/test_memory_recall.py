@@ -28,13 +28,13 @@ def test_parse_empty_output():
 
 def test_parse_em_dash_format():
     stdout = textwrap.dedent("""
-        identity/jozef.md — Jozef is Sydney based, AU spelling
+        identity/owner.md — owner info placeholder
         spaice/products/lock.md — RG80 garage roller deadbolt
     """).strip()
     hits = _parse_output(stdout)
     assert len(hits) == 2
-    assert hits[0].path == "identity/jozef.md"
-    assert hits[0].preview.startswith("Jozef is Sydney")
+    assert hits[0].path == "identity/owner.md"
+    assert hits[0].preview.startswith("owner info placeholder")
     assert hits[1].path == "spaice/products/lock.md"
 
 
@@ -100,13 +100,13 @@ def fake_recall_script(tmp_path):
 @pytest.mark.asyncio
 async def test_recall_happy(fake_recall_script):
     script = fake_recall_script(
-        "identity/jozef.md — Sydney, AU spelling\n"
+        "identity/owner.md — owner info placeholder\n"
         "spaice/products/rg80.md — garage roller deadbolt\n"
     )
     result = await recall("Sydney locks", script_path=script)
     assert result.error is None
     assert len(result.hits) == 2
-    assert result.hits[0].path == "identity/jozef.md"
+    assert result.hits[0].path == "identity/owner.md"
     assert result.elapsed_s >= 0
 
 

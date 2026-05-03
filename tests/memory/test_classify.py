@@ -129,10 +129,10 @@ def test_classify_happy_path(tmp_path, monkeypatch):
         "rule_matched": "Brand + ID",
         "cross_references": ["sites/hanna.md"],
         "confidence": 0.92,
-        "reasoning": "KNX IA is a protocol fact.",
+        "reasoning": "Protocol address fact."
     })
     with patch("spaice_agent.memory.classify.urllib.request.urlopen", return_value=mock_resp):
-        result = c.classify("KNX IA 1.1.241 at Hanna")
+        result = c.classify("Protocol address 1.1.241 at Example-Site")
 
     assert result.target_file == "bridges/knx.md"
     assert result.section == "Known IAs"
@@ -187,7 +187,7 @@ def test_fallback_triggered_on_low_confidence(tmp_path, monkeypatch):
     })
     fallback_resp = _mock_ok_response({
         "target_file": "bridges/knx.md", "section": "IAs", "dewey_layer": "500",
-        "priority": 2, "rule_matched": "KNX rule", "cross_references": [],
+        "priority": 2, "rule_matched": "protocol rule", "cross_references": [],
         "confidence": 0.88, "reasoning": "fallback is sure",
     })
 

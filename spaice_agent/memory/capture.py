@@ -6,7 +6,7 @@ to canonical shelves.
 
 This is intentionally SPAICE-agnostic: no product-matrix validation, no
 xlsx regeneration, no shelf routing. Those live in domain-specific writers
-(e.g. Jozef's `capture_fact.py` in ~/jarvis/scripts/ is a layer on top).
+(e.g. a user's `capture_fact.py` helper script can be a layer on top).
 """
 from __future__ import annotations
 

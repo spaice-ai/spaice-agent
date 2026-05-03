@@ -355,7 +355,7 @@ async def run_consensus(
             stages.append(out)
             total_cost += out.cost_usd
 
-        # --- Synthesis: ONLY if we have reviewer output (Jozef rule corr 007) ---
+        # --- Synthesis: ONLY if we have reviewer output (consensus rule, corr 007) ---
         if (
             error is None
             and len(stages) == 3

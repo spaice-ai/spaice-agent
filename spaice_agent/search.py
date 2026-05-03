@@ -219,7 +219,7 @@ async def run_search(
 
     ``credentials`` maps provider_name -> api_key. A provider without a
     credential entry is skipped cleanly (not an error — e.g. Brave absent
-    on Jarvis until Jozef provisions).
+    on the agent until the user provisions one).
 
     The search obeys the config's per-provider timeout AND a wrapping
     stage_timeout — the whole fan-out runs under ``asyncio.gather`` with

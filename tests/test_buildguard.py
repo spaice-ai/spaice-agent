@@ -249,7 +249,7 @@ def test_exemption_valid(guard, mock_config):
     exemption.write_text(yaml.dump({
         "target": "spaice_agent/foo.py",
         "expires_after": "single_commit",
-        "granted_by": "jozef",
+        "granted_by": "admin",
     }))
     assert guard._check_exemption("spaice_agent/foo.py") is True
 

@@ -37,7 +37,7 @@ def populated_vault(empty_vault):
         "# Scope project\nAzure deploy at wonderfulbeach-f279a011.\n"
     )
     (empty_vault / "identity" / "jozef.md").write_text(
-        "# Identity\nJozef runs SPAICE — sells Inception + 2N + Basalte.\n"
+        "# Identity\nUser runs a SPAICE agent instance.\n"
     )
     (empty_vault / "patterns" / "unrelated.md").write_text(
         "# Patterns\nSome generic text without proper nouns.\n"
@@ -75,11 +75,11 @@ def test_recaller_loads_client_names(tmp_path, empty_vault):
 def test_recaller_loads_brand_names(tmp_path, empty_vault):
     triggers_yaml = tmp_path / "trig.yaml"
     triggers_yaml.write_text(yaml.safe_dump({
-        "brand_names": ["Basalte", "Lockwood"],
+        "brand_names": ["BrandOne", "BrandTwo"],
     }))
     r = Recaller.for_vault(empty_vault, triggers_yaml=triggers_yaml)
-    triggers = r.extract_triggers("Basalte Sentido keypad order")
-    assert "basalte" in triggers
+    triggers = r.extract_triggers("BrandOne widget-X order")
+    assert "brandone" in triggers
 
 
 def test_recaller_rejects_malformed_triggers(tmp_path, empty_vault):
@@ -145,12 +145,12 @@ def test_extract_triggers_priority_order(tmp_path, empty_vault):
     """Client names (prio 0) come before brand names (prio 2)."""
     triggers_yaml = tmp_path / "t.yaml"
     triggers_yaml.write_text(yaml.safe_dump({
-        "client_names": ["hanna"],
-        "brand_names": ["basalte"],
+        "client_names": ["example-site"],
+        "brand_names": ["brandone"],
     }))
     r = Recaller.for_vault(empty_vault, triggers_yaml=triggers_yaml)
-    triggers = r.extract_triggers("Basalte keypad for Hanna")
-    assert triggers.index("hanna") < triggers.index("basalte")
+    triggers = r.extract_triggers("brandone widget for example-site")
+    assert triggers.index("example-site") < triggers.index("brandone")
 
 
 # -- scan -------------------------------------------------------------------

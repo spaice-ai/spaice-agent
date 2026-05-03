@@ -1,6 +1,6 @@
 """Vault path abstraction — single source of truth for where an agent stores memory.
 
-Replaces the `~/jarvis/`-hardcoded pattern in Jozef's scripts with a config-driven
+Replaces any hardcoded `~/jarvis/` pattern in prior scripts with a config-driven
 layer. Each spaice-agent instance has:
 
   - A vault root (user-facing content, e.g. ~/jarvis/)
@@ -25,7 +25,7 @@ except ImportError:  # pragma: no cover — PyYAML is a hard dep declared in pyp
 
 
 # Canonical shelf names in priority order (earlier = more authoritative).
-# These match Jozef's jarvis/ layout exactly. Ships as an EMPTY skeleton;
+# These match the canonical jarvis/ reference layout. Ships as an EMPTY skeleton;
 # the user's content accumulates into these dirs as they work.
 CANONICAL_SHELVES: tuple[str, ...] = (
     "identity",        # who the user is

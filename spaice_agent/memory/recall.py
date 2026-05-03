@@ -40,7 +40,7 @@ DEFAULT_ID_PATTERNS: tuple[str, ...] = (
     r"\b[A-Z]{2,}[-/]?\d{2,}[A-Z0-9-]*\b",   # SKU-ish
     r"\b[A-Z]{2,}\d{2,}[A-Z]*\b",             # Alt SKU
     r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b",  # IPv4
-    r"\b\d{1,2}\.\d{1,2}\.\d{1,3}\b",         # KNX IA
+    r"\b\d{1,2}\.\d{1,2}\.\d{1,3}\b",         # version/address tuple (e.g. 1.2.34)
     r"https?://[^\s\]\)]+",                    # URL
 )
 

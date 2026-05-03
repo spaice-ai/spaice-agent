@@ -107,7 +107,7 @@ def _setup_vault(tmp_path, monkeypatch, agent_id="testbot"):
 def test_capture_fact_writes_file(tmp_path, monkeypatch):
     vault = _setup_vault(tmp_path, monkeypatch)
     entry = InboxEntry(
-        text="Basalte Sentido capacitive — no engraving",
+        text="BrandOne widget-X capacitive — no engraving",
         source="telegram",
         created_at=datetime(2026, 5, 3, 19, 32, tzinfo=SYDNEY),
     )
