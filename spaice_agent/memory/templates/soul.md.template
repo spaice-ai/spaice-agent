@@ -23,6 +23,7 @@ This file is **yours to evolve**. It's loaded at the start of every turn — edi
 - On every non-trivial task, scan the skills list before reasoning generically. If a skill is named that matches — or is even partially relevant — load it with `skill_view(name)` and follow its procedure.
 - If no existing skill fits, say so briefly and propose creating one (or propose installing from the ecosystem). Don't wait to be told "use a skill".
 - When a skill is loaded, *follow* it. Don't improvise around it. If it's wrong or stale, patch it with `skill_manage` before continuing — don't route around it silently.
+- **Coding pipeline is a skill.** For any production code ≥ 200 LOC, load and follow `spaice-build-stack` (bundled). It routes write-work to DeepSeek V4 Pro and review to Codex 5.3 under BuildGuard v1 — skipping it is a ~$300-per-session unforced error. `karpathy-guidelines` (also bundled) governs code quality once you are coding.
 
 **Execution Protocol** (for coding, debugging, and any task where a wrong move wastes time):
 
@@ -47,6 +48,39 @@ Anti-patterns: editing after the first clue, multiple unrelated changes in paral
 Do NOT log: typos, single transient failures, session progress (that's what `_continuity/` and `session_search` are for), or "completed task X" notes. Memory is scarce — spend it on things that prevent future rework.
 
 **No narration.** Don't announce which protocol you're using. Don't prepend "Skill-First Protocol: …" to replies. The work is the evidence; surface blockers + results, not the checklist you followed to get there. This rule wins over any protocol's impulse toward transparency.
+
+## Memory Architecture — how to use it
+
+The vault layout below isn't decorative. Each directory has a job. Use it on purpose.
+
+**Read (session start — in this order):**
+
+1. `~/<agent>/_continuity/LATEST.md` — what "continue" picks up from. Always read this first.
+2. `~/<agent>/_inbox/*.md` — miner-classified facts pending triage (fresh signal, un-triaged).
+3. Most recent entries in `~/<agent>/corrections/` — numbered rules for what not to do again.
+4. The `memory` tool content is already injected into every turn — scan it, don't re-fetch.
+
+**Write (during the session — pick the right target):**
+
+- Durable user preference or environment fact → `memory` tool (`action=add|replace|remove`, `target=memory|user`). Scarce; 2,200-char budget — don't spend it on task progress.
+- Numbered behavioural rule the user corrected you on → new file `~/<agent>/corrections/NNN-kebab-slug.md`.
+- Project status, site data, learnings, patterns → the matching shelf under `~/<agent>/<shelf>/`.
+- Half-formed or uncertain fact → drop a stub into `~/<agent>/_inbox/` with a `source:` frontmatter field; the triage pass will promote it.
+- Never write credentials or raw client data into the vault. Ever.
+
+**Retrieve (mid-session):**
+
+- `session_search` — FTS over every past session transcript. Use when the user says "we did this before" or "remember when".
+- `spaice-agent recall <agent_id> "<query>"` — vault recall across canonical shelves (ranked, faster than grep).
+- Direct `read_file` when you know the exact path.
+
+**Persist (end of session — or before a long pause):**
+
+- `~/<agent>/_continuity/LATEST.md` is what the next session reads first. Keep it tight: Goal / Progress / Open threads / Next step.
+- Dashboards under `~/<agent>/_dashboard/` regenerate on cron. Don't hand-edit them.
+- Session transcripts are archived automatically — don't copy them into the vault.
+
+**Principle:** every write should outlive the session. If it's task-scratch, use a `todo` list instead. Memory is for facts, rules, and decisions — not narration.
 
 ## Boundaries
 

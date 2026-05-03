@@ -467,6 +467,7 @@ BUNDLED_SKILLS = [
     "self-improvement",
     "instinct-learner",
     "karpathy-guidelines",
+    "spaice-build-stack",
     "pdf",
     "docx",
     "xlsx",

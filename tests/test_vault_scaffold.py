@@ -168,9 +168,16 @@ def test_action_ordering_is_deterministic(tmp_path: Path):
 
 
 def test_content_has_no_business_strings(vault_paths: VaultPaths):
-    """Scaffold content must be generic — no SPAICE / Tron / Jozef strings."""
+    """Scaffold content must be generic — no personal / client business strings.
+
+    Note: the framework name 'spaice-agent' is allowed because the shipped
+    templates legitimately reference the package's own CLI (e.g.
+    `spaice-agent recall`). This test guards against leaking *user-specific*
+    business data (SPAICE company, Tron, Jozef) and adjacent platform names
+    (Hermes) into a generic scaffold.
+    """
     scaffold_vault(vault_paths)
-    banned = ("SPAICE", "Tron", "Jozef", "spaice-agent", "Hermes")
+    banned = ("SPAICE", "Tron", "Jozef", "Hermes")
     for rel_path in _TEMPLATES:
         content = (vault_paths.vault_root / rel_path).read_text()
         for bad in banned:
