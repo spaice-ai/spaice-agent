@@ -32,6 +32,9 @@ spaice-agent = "spaice_agent.cli:main"
 include = ["spaice_agent*"]
 exclude = ["tests*"]
 
+[tool.setuptools.package-data]
+"spaice_agent.templates" = ["*.template", "*.yaml"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
