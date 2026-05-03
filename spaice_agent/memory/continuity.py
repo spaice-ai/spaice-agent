@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -210,7 +211,7 @@ Last updated: {block.ts}
     target = continuity_dir / "LATEST.md"
     # Blocker fix (Codex Phase 1C #11): PID-suffixed tmp name prevents concurrent
     # writers from colliding on a shared `.tmp` file.
-    tmp = continuity_dir / f".LATEST.md.tmp-{os.getpid()}"
+    tmp = continuity_dir / f".LATEST.md.tmp-{os.getpid()}-{uuid.uuid4().hex[:8]}"
     tmp.write_text(content, encoding="utf-8")
     os.replace(tmp, target)
     return target

@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -155,7 +156,10 @@ def _build_entries(
         if rel_path in existing_entries:
             existing = existing_entries[rel_path]
             if abs(existing.mtime - mtime) < 1.0:  # within 1 sec tolerance
-                fresh_backlinks = tuple(backlink_map.get(_entry_path_to_stem(rel_path), []))
+                # Codex 5.3 finding: normalise reused backlinks the same way
+                # fresh parse does (sorted set) so index output is stable
+                # across rebuilds regardless of which path produced the entry.
+                fresh_backlinks = tuple(sorted(set(backlink_map.get(_entry_path_to_stem(rel_path), []))))
                 if fresh_backlinks != existing.backlinks:
                     # Re-emit with fresh backlinks
                     entries.append(LibraryEntry(
@@ -271,6 +275,11 @@ def load_library_index(vault_root: Path) -> Optional[LibraryIndex]:
 
     entries: list[LibraryEntry] = []
     for item in raw_entries:
+        # Codex 5.3 finding: defend against non-dict entries (e.g. user-edited
+        # YAML with a bare string in the list) — skip rather than AttributeError.
+        if not isinstance(item, dict):
+            logger.debug("Skipping non-dict entry in index: %r", item)
+            continue
         try:
             # Convert mtime to float if stored as string/float
             mtime = float(item.get('mtime', 0.0))
@@ -283,7 +292,7 @@ def load_library_index(vault_root: Path) -> Optional[LibraryIndex]:
                 mtime=mtime,
             )
             entries.append(entry)
-        except (TypeError, ValueError) as exc:
+        except (TypeError, ValueError, AttributeError) as exc:
             logger.debug("Skipping malformed entry in index: %s", exc)
             continue
 
@@ -307,7 +316,7 @@ def save_library_index(index: LibraryIndex, vault_root: Path) -> None:
     dash_dir = vault_root / '_dashboard'
     dash_dir.mkdir(parents=True, exist_ok=True)
     index_path = dash_dir / 'library-index.yaml'
-    tmp_path = index_path.with_suffix('.tmp')
+    tmp_path = index_path.with_suffix(f'.tmp-{os.getpid()}-{uuid.uuid4().hex[:8]}')
 
     serialized = {
         'entries': [

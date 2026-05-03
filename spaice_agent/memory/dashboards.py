@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime as dt
 import os
 import re
+import uuid
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
@@ -116,7 +117,7 @@ def _atomic_write(file_path: Path, content: str) -> None:
     at least cross-fs copies are eliminated.
     """
     file_path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = file_path.parent / f".{file_path.name}.tmp-{os.getpid()}"
+    tmp = file_path.parent / f".{file_path.name}.tmp-{os.getpid()}-{uuid.uuid4().hex[:8]}"
     try:
         tmp.write_text(content, encoding="utf-8")
         os.replace(str(tmp), str(file_path))
@@ -143,7 +144,9 @@ def _gen_continuity(vault_root: Path) -> List[Dict[str, str]]:
     except Exception:
         return []
 
-    # Extract the line following the last "## Next step" heading
+    # Extract the first non-empty non-heading line under "## Next step".
+    # If we hit another "## " heading while in-block, STOP — the Next step
+    # section is empty; do not bleed into the next section (Codex 5.3 finding).
     next_step = ""
     in_block = False
     for line in text.splitlines():
@@ -152,7 +155,10 @@ def _gen_continuity(vault_root: Path) -> List[Dict[str, str]]:
             continue
         if in_block:
             stripped = line.strip()
-            if stripped.startswith("##") or stripped == "":
+            if stripped.startswith("## "):
+                # Next section boundary — Next step was empty. Stop.
+                break
+            if stripped == "":
                 continue
             next_step = stripped
             break

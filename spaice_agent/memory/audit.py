@@ -106,7 +106,13 @@ def check_orphaned_inbox(vault_root: Path) -> List[AuditFinding]:
     now = dt.datetime.now(dt.timezone.utc)
     cutoff = now - dt.timedelta(days=7)
     for md_file in inbox_dir.glob("*.md"):
-        if any(part.startswith(".") for part in md_file.parts):
+        # Skip hidden entries: check path relative to vault_root, not absolute
+        # (absolute path may traverse dot-prefixed ancestors like ~/.config/)
+        try:
+            rel_parts = md_file.relative_to(vault_root).parts
+        except ValueError:
+            rel_parts = (md_file.name,)
+        if any(part.startswith(".") for part in rel_parts):
             continue
         try:
             mtime = dt.datetime.fromtimestamp(md_file.stat().st_mtime, tz=dt.timezone.utc)
@@ -169,7 +175,7 @@ def check_missing_frontmatter(vault_root: Path) -> List[AuditFinding]:
                         message="Missing YAML frontmatter block (no leading '---')",
                     ))
         except (OSError, UnicodeDecodeError) as _audit_exc:
-            logger.debug("audit frontmatter: read failed for %s: %s", f, _audit_exc)
+            logger.debug("audit frontmatter: read failed for %s: %s", full, _audit_exc)
             # can't read? not a text file - skip
     return findings
 
@@ -183,7 +189,7 @@ def check_broken_wikilinks(vault_root: Path) -> List[AuditFinding]:
         try:
             content = full.read_text(encoding="utf-8", errors="ignore")
         except OSError as _audit_exc:
-            logger.debug("audit wikilinks: read failed for %s: %s", md, _audit_exc)
+            logger.debug("audit wikilinks: read failed for %s: %s", full, _audit_exc)
             continue
         targets = _extract_wikilinks(content)
         for target in targets:
@@ -340,7 +346,7 @@ def audit_vault(vault_root: Path) -> AuditReport:
         try:
             findings = check_fn(vault_root)
         except Exception as _audit_exc:
-            logger.warning("audit: check %s raised: %s", check_name, _audit_exc, exc_info=True)
+            logger.warning("audit: check %s raised: %s", name, _audit_exc, exc_info=True)
             # We must not raise; treat as error finding for the check itself
             findings = [AuditFinding(
                 severity="error",
