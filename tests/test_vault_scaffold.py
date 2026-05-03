@@ -36,14 +36,14 @@ def vault_paths(tmp_path: Path) -> VaultPaths:
 # ---------------------------------------------------------------------------
 
 
-def test_fresh_vault_creates_all_20_files(vault_paths: VaultPaths):
+def test_fresh_vault_creates_all_21_files(vault_paths: VaultPaths):
     report = scaffold_vault(vault_paths)
 
-    # Spec: 3 vault-root files + 9 shelf READMEs + 4 special READMEs + 4 templates = 20
-    assert len(_TEMPLATES) == 20, (
-        f"scaffold template count changed — expected 20, got {len(_TEMPLATES)}"
+    # Spec: 3 vault-root files + 9 shelf READMEs + 4 special READMEs + 4 templates + 1 identity/SOUL.md = 21
+    assert len(_TEMPLATES) == 21, (
+        f"scaffold template count changed — expected 21, got {len(_TEMPLATES)}"
     )
-    assert report.created_count == 20
+    assert report.created_count == 21
     assert report.skipped_count == 0
     assert report.overwrote_count == 0
     assert report.dry_run is False
@@ -75,11 +75,11 @@ def test_skeleton_missing_inbox_raises(tmp_path: Path):
 
 def test_idempotent_second_run_skips_all(vault_paths: VaultPaths):
     first = scaffold_vault(vault_paths)
-    assert first.created_count == 20
+    assert first.created_count == 21
 
     second = scaffold_vault(vault_paths)
     assert second.created_count == 0
-    assert second.skipped_count == 20
+    assert second.skipped_count == 21
     assert second.overwrote_count == 0
     assert all(a.action == "skipped_existed" for a in second.actions)
 
@@ -91,7 +91,7 @@ def test_overwrite_flag_replaces_existing(vault_paths: VaultPaths):
     target.write_text("USER EDIT — should be overwritten\n")
 
     report = scaffold_vault(vault_paths, overwrite=True)
-    assert report.overwrote_count == 20
+    assert report.overwrote_count == 21
     assert report.skipped_count == 0
     assert "USER EDIT" not in target.read_text()
     assert "Required frontmatter" in target.read_text()
@@ -213,10 +213,10 @@ def test_concurrent_scaffolds_both_succeed(tmp_path: Path):
 
 def test_summary_line_formats(vault_paths: VaultPaths):
     report = scaffold_vault(vault_paths)
-    assert report.summary_line() == "created 20"
+    assert report.summary_line() == "created 21"
 
     report2 = scaffold_vault(vault_paths)
-    assert report2.summary_line() == "skipped 20"
+    assert report2.summary_line() == "skipped 21"
 
 
 def test_category_attribution(vault_paths: VaultPaths):

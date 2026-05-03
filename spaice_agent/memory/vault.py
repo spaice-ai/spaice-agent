@@ -222,6 +222,22 @@ for _sdir in SPECIAL_DIRS:
     if _sdir != "_archive":
         _TEMPLATES[f"{_sdir}/README.md"] = _special_readme(_sdir)
 
+# -- identity/SOUL.md (shipped template for the agent's persona + doctrine) -
+# Loaded from package resource so the full text lives in a .md.template file
+# (easier to diff, review, and localise than an inline string).
+try:
+    from importlib import resources as _res
+    _TEMPLATES["identity/SOUL.md"] = (
+        _res.files("spaice_agent.memory.templates")
+        .joinpath("soul.md.template")
+        .read_text(encoding="utf-8")
+    )
+except (ModuleNotFoundError, FileNotFoundError, AttributeError):
+    # Fallback for source checkouts and older Python
+    _soul_path = Path(__file__).parent / "templates" / "soul.md.template"
+    if _soul_path.exists():
+        _TEMPLATES["identity/SOUL.md"] = _soul_path.read_text(encoding="utf-8")
+
 # -- starter templates -----------------------------------------------------
 
 _TEMPLATES["_templates/note.md"] = """\

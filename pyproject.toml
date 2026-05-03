@@ -34,6 +34,7 @@ exclude = ["tests*"]
 
 [tool.setuptools.package-data]
 "spaice_agent.templates" = ["*.template", "*.yaml"]
+"spaice_agent.memory.templates" = ["*.template"]
 "spaice_agent.bundled_skills" = ["**/*"]
 
 [tool.pytest.ini_options]
