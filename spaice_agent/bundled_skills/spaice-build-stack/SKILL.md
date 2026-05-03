@@ -22,16 +22,16 @@ metadata:
       - writing-plans
 ---
 
-# SPAICE Build Stack — Default Coding Workflow
+# Build Stack — Default Coding Workflow
 
-**MANDATORY for any SPAICE code. No exceptions.** The pipeline is immutable:
+**MANDATORY for any production code.   No exceptions.** The pipeline is immutable:
 Opus framework → DeepSeek V4 Pro implementation → Jarvis tests → Codex 5.3
 review. Every step, every time. No skips, no shortcuts, no "direct-typed"
 escape hatches. If the pipeline cannot run, coding does not happen.
 
 Run silently — don't announce the stack to the user, just use it.
 
-Per correction 009 (2026-05-03): bypass of this pipeline cost Jozef ~$300
+Per correction 009 (2026-05-03): bypass of this pipeline cost ~$300 in a single session
 in one session. The escape clauses that made bypass possible have been
 REMOVED from this skill. DeepSeek V4 Pro is not optional.
 
@@ -56,8 +56,7 @@ mkdir -p ~/jarvis/_scratch                # Scratch dir for critiques
 ```
 
 If ANY is missing, fix before firing a single LLM call. Common cases:
-- Credential missing → check `~/.Hermes/credentials/` (canonical store) or `~/.hermes/.env` for API keys; if genuinely absent, flag to Jozef
-  via the `credentials` module's migration pattern (write to
+- Credential missing → check `~/.Hermes/credentials/` (canonical store) or `~/.hermes/.env` for API keys; if genuinely absent, flag to the user via the `credentials` module's migration pattern (write to
   `~/.Hermes/credentials/<slug>.key`, chmod 0600)
 - `call_codex.py` missing → write it with the content-fallback block
   from the "Wrapper must handle content=None" section below
@@ -110,7 +109,7 @@ search_files(pattern="<target-path-fragment>|mkdir|makedirs",
    missing piece (e.g. switch from "read call log" to "deny-by-default
    with exemption-only").
 
-3. **Surface to Jozef** — if the dependency gap changes the fundamental
+3. **Surface to the user** — if the dependency gap changes the fundamental
    value prop of the module, stop and ask which of the above he wants.
 
 **Do NOT silently fire DeepSeek hoping Codex will catch it.** Codex
@@ -119,7 +118,7 @@ tonight caught the downstream blockers (5 of them) but the SCOPE-REVEAL
 to the cycle and requiring plan revision. The check-before-fire is
 30 seconds; catching it in Codex review is $0.10+ and a retry.
 
-**Case file — 2026-05-03 BuildGuard cycle:**
+**Case file — BuildGuard cycle:**
 
 Framework spec: "BuildGuard checks the credentials module's OpenRouter
 call log for a recent DeepSeek invocation against the target path."
@@ -176,7 +175,7 @@ this before DeepSeek ran. That's the check this step exists for.
 │    - Structured critique: factual errors / arch weaknesses /    │
 │      incomplete specs / risk omissions / impl pitfalls / verdict│
 │    - Jarvis applies all LEGITIMATE hits (judgement call on      │
-│      borderline ones — flag to Jozef if ambiguous)              │
+│      borderline ones — flag to the user if ambiguous)              │
 └──────────────────────────┬──────────────────────────────────────┘
                            │ fixes applied, tests still green
                            ▼
@@ -195,12 +194,11 @@ Load automatically when ANY of these signals appear in the turn:
 **Artifact signals:**
 - User mentions a specific `.py` file to be created or substantially modified
 - User references a spec / plan / framework that implies code output
-- User asks for a new component of an in-flight SPAICE project
+- User asks for a new component of an in-flight project
 
 **Scope signals:**
-- Any work inside `~/Developer/spaice-agent/`,
-  `/Users/jarvis/.openclaw/workspace/projects/spaice-*`, or any repo
-  under `spaice-ai/` organisation
+- Any work inside `~/Developer/<repo>/`, any local `spaice-*` checkout,
+  or any repo under the project's GitHub organisation
 - Bug fix touching >50 LOC
 - Any change to concurrency, credentials, security, or external
   protocol handling (HTTP retry, auth, file locking, rate limiting)
@@ -297,7 +295,7 @@ If the framework can't name which of these (or a comparable primitive)
 enforces the rule, the framework is a diary, not a gate — and Codex will
 catch it. Save the round-trip by pivoting before v1 ships.
 
-**Case file — 2026-05-03 build-ledger cycle:**
+**Case file — build-ledger cycle:**
 v1: "pre-flight gate" depending on Hermes write_file interception
     → Codex: mechanism doesn't exist, gate is decorative.
 v2: "self-audit ledger" depending on agent logging each write
@@ -372,7 +370,7 @@ req = urllib.request.Request(
     data=json.dumps(body).encode(),
     headers={"Authorization": f"Bearer {key}",
              "Content-Type": "application/json",
-             "HTTP-Referer": "https://spaice.local",
+             "HTTP-Referer": "https://example.local",
              "X-Title": "build <module>.py"})
 t0 = time.time()
 with urllib.request.urlopen(req, timeout=600) as r:
@@ -501,7 +499,7 @@ body = {
 
 - **Factual errors** → fix immediately, no exceptions
 - **Architectural weaknesses** → judgement call; fix if prod impact
-  clear, flag to Jozef if ambiguous
+  clear, flag to the user if ambiguous
 - **Incomplete specs** → fix if contract violated; ignore if
   aspirational ("could also handle X" that's not in the plan)
 - **Risk omissions** → fix if listed as a real failure mode; ignore
@@ -510,7 +508,7 @@ body = {
   locking, async); push back on overblown ones with reasoning
 
 Save the critique to disk alongside the module:
-`~/Developer/spaice-agent/reviews/<module>_codex_<date>.md`.
+`~/Developer/<repo>/reviews/<module>_codex_<date>.md`.
 It becomes audit evidence and the basis for follow-up.
 
 ### Finding triage — the accept/reject matrix
@@ -588,7 +586,7 @@ This is the ONE triage move that's purely Jarvis's call — the reviewer
 is wrong about the language, not about your code. Don't defer to the
 reviewer's confidence; defer to the interpreter.
 
-**Case file — 2026-05-03 Phase 1A (spaice-agent memory modules):**
+**Case file — Phase 1A (spaice-agent memory modules):**
 16 findings across 3 modules (paths/capture/recall). Triage result:
 - 6 accepted (3 real behaviour bugs + 3 defensive hardening)
 - 10 rejected (7 context gaps, 3 policy disagreements with spec)
@@ -597,7 +595,7 @@ reviewer's confidence; defer to the interpreter.
   YAML scalar not properly quoted. All three would have shipped
   unnoticed without the review.
 
-**Case file — 2026-05-03 Phase 1C Codex 5.3 re-review (post-correction-017):**
+**Case file — Phase 1C Codex 5.3 re-review (post-correction-017):**
 Same 5 modules re-reviewed with `openai/gpt-5.3-codex` (versioned slug)
 to validate correction 017 against the earlier Sonnet pass. 13 findings
 surfaced; triage:
@@ -621,7 +619,7 @@ Pattern validated twice: Codex reviews turn into a test-generator
 for the edge cases you didn't think of. The accept-path findings
 almost always map 1-to-1 to a missing regression test.
 
-**Case file — 2026-05-03 Phase 1C five-module cycle (Sonnet 4.5, superseded):**
+**Case file — Phase 1C five-module cycle (Sonnet 4.5, superseded):**
 5 modules through DeepSeek → Sonnet 4.5 review → triage → fix cycle.
 Review surfaced 10 blockers + 19 majors across the 5 modules; triage
 verdict:
@@ -735,7 +733,7 @@ modes that pass manual testing:
    context-gap, etc.). Shell-script tests can run as subprocess calls
    in pytest; argparse tests can import `main()` directly.
 
-### Case file — 2026-05-03 Phase 2A+2B (CLI subcommands + install.sh flag)
+### Case file — Phase 2A+2B (CLI subcommands + install.sh flag)
 
 - Scope: added 7 memory subcommands to `cli.py`, `--with-vault` +
   `--full` flags to `install.sh`, fixed 2 audit false positives.
@@ -822,8 +820,7 @@ before every CLI/scaffold/exporter commit.
 **`openai/gpt-5.3-codex` (released 2026-02-24, $1.75/M in, $14/M out,
 400K context) is the ONLY sanctioned reviewer.** No Sonnet. No earlier
 Codex. No unversioned meta-slug. No exceptions — single module, batch,
-retroactive, pre-tag final, all GPT-5.3-Codex. Jozef directive
-2026-05-03 (correction 017).
+retroactive, pre-tag final, all GPT-5.3-Codex. user directive (see correction 017).
 
 **Why the versioned slug, not `openai/gpt-5-codex`:** the unversioned
 meta-slug can route to older builds. Pin the exact version.
@@ -831,7 +828,7 @@ meta-slug can route to older builds. Pin the exact version.
 **Minimum version:** 5.3 is the floor. If OpenRouter ships a newer
 Codex (5.4, 6.x, etc.) under its own versioned slug, upgrade. If
 `openai/gpt-5.3-codex` is ever deprecated without a newer versioned
-slug available, refuse to fire and surface to Jozef.
+slug available, refuse to fire and surface to the user.
 
 **Why not Sonnet 4.5 (previously recommended for batch retro review):**
 Sonnet raised false positives on the 2026-05-03 Phase 1C review
@@ -1030,7 +1027,7 @@ the same pattern in modules you missed. Regression test: two threads
 × 15+ iterations writing the same target, assert no exceptions and
 final file exists.
 
-## Case file — 2026-05-03 five-module cycle
+## Case file — five-module cycle
 
 End-to-end cycle on `credentials`, `memory_recall`, `memory_store`,
 `search`, `consensus`, `orchestrator`. Documents a multi-module session
@@ -1050,7 +1047,7 @@ with both framework-critique iteration AND retroactive batch review.
 4. Five modules coded. **DeepSeek MUST be invoked. There is no skip.**
    The previous "direct-typed-no-deepseek-invoke" exception has been
    REMOVED per correction 009 (2026-05-03). Opus self-typing bypass cost
-   Jozef ~$300 in tokens across Phase 1A+1B. No exceptions. No shortcuts.
+   ~$300 in tokens across Phase 1A+1B (historical incident). No exceptions. No shortcuts.
    No approval pathway. DeepSeek runs or coding does not happen.
 5. Pass 1 retroactive review attempted with the (then unversioned) `openai/gpt-5-codex` slug via
    ThreadPoolExecutor(max_workers=6) — 5/6 failed with
@@ -1064,7 +1061,7 @@ with both framework-critique iteration AND retroactive batch review.
 8. Blockers/majors fixed in-code. Test suite: 232/232 passing
    (146 old + 86 new). Live smoke test fired full pipeline end-to-end
    against OpenRouter: 25s, $0.042, 4 stages, correct voice output.
-9. Remaining blocker surfaced is HERMES wiring (not SPAICE code) —
+9. Remaining blocker surfaced is HERMES wiring (not package code) —
    documented in `~/jarvis/_scratch/hermes-wiring-blockers.md` for
    separate decision.
 

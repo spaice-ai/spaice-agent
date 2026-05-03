@@ -1,5 +1,6 @@
-# Errors Log
+# Errors
 
-Command failures, exceptions, and unexpected behaviors.
+Captures session insights. Populated by the self-improvement skill.
 
 ---
+

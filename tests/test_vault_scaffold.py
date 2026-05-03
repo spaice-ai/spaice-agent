@@ -186,6 +186,118 @@ def test_content_has_no_business_strings(vault_paths: VaultPaths):
             )
 
 
+def test_bundled_skills_have_no_business_strings():
+    """Every bundled skill ships to end users — no user-specific strings
+    allowed in the SKILL.md or its README/references.
+
+    'Hermes' is allowed here because some bundled skills legitimately
+    describe the runtime (spaice-agent rides on Hermes). The stricter
+    rules apply to company/person names that leak internal identity.
+
+    Case-insensitive match: we ban the tokens in any case (`SPAICE`,
+    `spaice`, `Spaice` all fail). Exception: lowercase `spaice` as
+    part of the `spaice-agent` package name is allowed via a regex
+    word boundary check (substring `spaice-agent` OR `spaice_agent`
+    is fine; standalone `spaice` as company reference is not).
+    """
+    import re as _re
+    from pathlib import Path as _Path
+    skills_dir = _Path(__file__).resolve().parent.parent / "spaice_agent" / "bundled_skills"
+
+    # Case-insensitive banned tokens. Each entry is (token, allowed_contexts).
+    # `spaice` is allowed in these contexts:
+    #   - `spaice-agent` / `spaice_agent` (the package's own name)
+    #   - `spaice-build-stack`, `spaice-continuity`, `spaice-memory`,
+    #     `spaice-conventions`, etc. — bundled skill names.
+    # Explicitly DENIED despite matching the skill-name pattern:
+    #   - `spaice-ai` (company/org name)
+    #   - `spaice.ai` (domain)
+    #   - `spaice-*` as a glob pattern is allowed (documentation usage)
+    # The allow pattern is a whitelist of safe forms; the deny list below
+    # runs first to kick out known company/domain references regardless.
+    banned_tokens = [
+        ("spaice", [
+            _re.compile(r"spaice[-_][a-z][a-z-_]+", _re.IGNORECASE),
+            _re.compile(r"spaice-\*", _re.IGNORECASE),
+        ]),
+        ("tron", []),
+        ("jozef", []),
+    ]
+
+    # Hard deny list — forms that match the allow pattern but are
+    # explicitly business-branding. Checked first, overrides the allow.
+    hard_deny_patterns = [
+        _re.compile(r"spaice-ai", _re.IGNORECASE),
+        _re.compile(r"spaice\.ai", _re.IGNORECASE),
+    ]
+
+    # Upstream MIT-imported skills (third-party content) preserved verbatim.
+    # joe-guidelines is NOT exempt — it ships under our package umbrella
+    # and is scanned. Upstream office-suite + gmail retain their original
+    # upstream content which may reference their project names.
+    upstream_exempt = {"antigravity", "pdf", "docx", "xlsx", "pptx", "gmail"}
+
+    offenders: list[tuple[str, str, str]] = []
+    for skill_dir in skills_dir.iterdir():
+        if not skill_dir.is_dir() or skill_dir.name in upstream_exempt:
+            continue
+        for md_file in skill_dir.rglob("*.md"):
+            try:
+                content = md_file.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+            rel = md_file.relative_to(skills_dir)
+
+            for token, allowed in banned_tokens:
+                # Find all case-insensitive matches of the token as a word
+                pattern = _re.compile(r"\b" + _re.escape(token) + r"\b", _re.IGNORECASE)
+                for match in pattern.finditer(content):
+                    # Check if this match is inside any allowed context
+                    match_line_start = content.rfind("\n", 0, match.start()) + 1
+                    match_line_end = content.find("\n", match.end())
+                    if match_line_end == -1:
+                        match_line_end = len(content)
+                    line = content[match_line_start:match_line_end]
+
+                    relative_start = match.start() - match_line_start
+
+                    # Hard-deny runs FIRST — any line containing the deny
+                    # patterns is an offender regardless of allow status
+                    denied = False
+                    for deny_pat in hard_deny_patterns:
+                        for deny_match in deny_pat.finditer(line):
+                            if deny_match.start() <= relative_start < deny_match.end():
+                                denied = True
+                                break
+                        if denied:
+                            break
+                    if denied:
+                        offenders.append((str(rel), token, line.strip()))
+                        break  # one offender per token per file is enough signal
+
+                    # Otherwise: is this match covered by an allowed pattern?
+                    covered = False
+                    for allow_pat in allowed:
+                        for allow_match in allow_pat.finditer(line):
+                            if allow_match.start() <= relative_start < allow_match.end():
+                                covered = True
+                                break
+                        if covered:
+                            break
+                    if covered:
+                        continue
+
+                    offenders.append((str(rel), token, line.strip()))
+                    break  # one offender per token per file is enough signal
+
+    assert not offenders, (
+        "Business-specific strings leaked into bundled skills "
+        f"(banned tokens: {[t[0] for t in banned_tokens]}, case-insensitive):\n" +
+        "\n".join(f"  {path}: {tok!r} → {line[:120]}"
+                  for path, tok, line in offenders)
+    )
+
+
 def test_concurrent_scaffolds_both_succeed(tmp_path: Path):
     """Two threads scaffolding different vaults concurrently — both succeed."""
     errors: list[Exception] = []

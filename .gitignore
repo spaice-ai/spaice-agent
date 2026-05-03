@@ -15,3 +15,4 @@ spaice_agent/**/__pycache__/
 tests/__pycache__/
 spaice_agent.egg-info/
 *.pyc
+_scratch/

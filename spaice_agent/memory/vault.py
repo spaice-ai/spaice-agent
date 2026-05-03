@@ -139,6 +139,10 @@ When unsure, drop the file into `_inbox/` — the agent will triage it later.
 _TEMPLATES["CONVENTIONS.md"] = """\
 # Vault Conventions
 
+The vault is markdown with structured frontmatter. Tools in this package
+(`classify`, `mine`, `triage`, `summarise`, `audit`) rely on these
+conventions — keep them consistent or automation drifts.
+
 ## Required frontmatter
 
 Every markdown file in the vault must start with a YAML frontmatter block
@@ -153,62 +157,245 @@ tags: [<tag1>, <tag2>]
 ```
 
 - `title` — a human-readable title for the entry.
-- `date` — ISO 8601 date (`YYYY-MM-DD`) when the content was created or last
-  significantly updated.
-- `tags` — a YAML list of lowercase tags. Use kebab-case for multi-word tags.
+- `date` — ISO 8601 date (`YYYY-MM-DD`) when the content was created or
+  last significantly updated.
+- `tags` — a YAML list of lowercase tags. Use kebab-case for multi-word
+  tags.
+
+## Optional frontmatter (recognised by tooling)
+
+Add these fields when they apply — the miner, triage, and audit tools
+read them if present:
+
+```yaml
+status: draft | active | superseded | archived
+dewey_layer: "300 Systems"      # see CATEGORISATION.md for layer meanings
+source: <where this came from — url, session id, "user 2026-05-04">
+refs: ["[[related-file]]", "[[other-file]]"]
+updated: YYYY-MM-DD             # last edit, separate from creation `date`
+valid_to: YYYY-MM-DD             # set when superseded; preserves history
+```
+
+The automation uses `dewey_layer` as the canonical field name (matches
+`classifier_dewey_layer` written by the miner). Use the `"NNN Label"`
+form — e.g. `"300 Systems"`, `"600 Preferences"`, `"000 General"`.
+
+## Classifier-written frontmatter (do not hand-edit)
+
+When the miner drops a draft into `_inbox/`, it writes these fields.
+Triage reads them; leave them alone:
+
+```yaml
+mined_at: <ISO timestamp>
+source_session: <hermes session file>
+source_turn: <int>
+classifier_target: <target-file-path>
+classifier_section: <target-heading>
+classifier_dewey_layer: "300 Systems"
+classifier_priority: <1-5 integer>
+classifier_confidence: 0.87
+classifier_rule: <which CATEGORISATION rule matched>
+classifier_model: <model slug used>
+classifier_used_fallback: false
+```
+
+Triage consumes these and either files the draft to the classifier
+target (if confidence ≥ 0.85) or escalates to `LOG.md`.
+
+## Continuity file frontmatter
+
+`_continuity/LATEST.md` is special — it's what "continue" reads first.
+Its frontmatter is written by `summarise`:
+
+```yaml
+---
+source_session: <hermes session file>
+summary_generated_at: <ISO timestamp>
+summary_method: llm | heuristic
+schema_version: 1
+---
+```
+
+Treat `LATEST.md` as automation output. Never hand-edit — rerun
+`spaice-agent summarise <agent_id>` instead.
 
 ## File naming
 
 - Use **kebab-case** for filenames: `my-project-notes.md`.
 - Avoid spaces, underscores, and special characters.
 - Keep names short but descriptive.
+- Dewey-style prefixes (e.g. `300.10001-home-network.md`) are optional —
+  useful for very large vaults, overkill for small ones.
 
 ## Dates
 
-All dates must be in **ISO 8601** format: `YYYY-MM-DD`.  Do not use
-`MM/DD/YYYY` or natural-language dates.
+All dates use **ISO 8601** format: `YYYY-MM-DD`. Do not use
+`MM/DD/YYYY` or natural-language dates. Timestamps use ISO 8601 with
+timezone: `2026-05-04T14:32:00+10:00`.
 
-## Wikilinks
+## Wikilinks — the moat's connective tissue
 
-Link to other vault pages using wikilink syntax:
+Link to other vault pages using Obsidian-compatible wikilink syntax:
 
 - `[[target-page]]` — links to `target-page.md` in the same vault.
-- `[[target-page|alias]]` — displays “alias” but links to `target-page.md`.
+- `[[target-page|alias]]` — displays "alias" but links to `target-page.md`.
+- `[[target-page#Section]]` — links to a specific heading.
 
-Wikilinks are resolved relative to the vault root.  Do not use absolute
+Wikilinks resolve relative to the vault root. Do not use absolute
 filesystem paths.
+
+**Cross-reference discipline:** if file A mentions file B's subject,
+file A should `[[B]]` and file B should mention `[[A]]` back where it
+makes sense. The `audit` tool reports broken wikilinks; run
+`spaice-agent audit <agent_id>` occasionally to catch rot.
+
+## Single topic per file
+
+One subject per markdown file. If a fact spans two topics, write it in
+the primary file and add a one-line `[[cross-ref]]` in the other.
+Avoid mixing — the classifier and retrieval tools work better on
+focused files.
+
+## Attribution and zero-fabrication
+
+- Attribute user decisions: "Alex decided X on 2026-05-04" — not
+  "decided X".
+- If a fact is unconfirmed, write `[TBC]` or use `status: draft`.
+  Never guess.
+- Supersede with a dated block rather than deleting:
+
+  ```markdown
+  ## [2026-05-04] Decision changed
+  Previously: <old position>. Now: <new position>. Reason: <why>.
+  ```
+
+## Never write credentials
+
+Credentials live in the agent's credential store, never in the vault.
+If you need to reference a credential by name, write the filename:
+
+```markdown
+API key lives at `~/.<agent>/credentials/openrouter.key` — not pasted
+here.
+```
 
 ## General style
 
-- Write in clear, concise English.
-- Use headings to structure longer pages.
-- Keep entries focused — one topic per file.
+- Clear, concise English. No filler.
+- Headings (`##`, `###`) for structure, not decoration.
+- Fenced code blocks for commands, config, regex, and anything a
+  future reader will copy-paste.
 """
 
 _TEMPLATES["CATEGORISATION.md"] = """\
 # Categorisation Guide
 
-Use this decision tree to choose the right shelf for new content.
+This file is the **routing table** used by `spaice-agent classify`.
+When the miner processes a fact, the LLM classifier reads this file as
+its system prompt and picks a target shelf. Keep it accurate — drift
+here causes drift in every auto-filed fact.
 
-- **Is it about you?**
-  - Core facts, roles, self-descriptions → `identity/`
-  - Personal context, preferences, non-work → `personal/`
-- **Is it a rule or correction you’ve given the agent?**
-  → `corrections/`
-- **Is it a reusable solution shape or design pattern?**
-  → `patterns/`
-- **Is it something you’ve learned (field knowledge, insight)?**
-  → `learnings/`
-- **Is it about a service, API, or tool?**
-  → `integrations/`
-- **Is it about infrastructure, hosts, or networks?**
-  → `infrastructure/`
-- **Is it a workstream or project?**
-  → `projects/`
-- **Is it a physical location, client site, or venue?**
-  → `sites/`
-- **Unsure?**
-  → `_inbox/` — the agent will triage it later.
+## Dewey layers (8-layer stack)
+
+Every fact gets a `dewey_layer` tag. The layers below match library
+science conventions (400 is deliberately kept empty for readability —
+don't use it):
+
+| Layer | Theme | Shelves in this vault |
+|---|---|---|
+| **000** | General, cross-cutting, uncategorised | `_inbox/`, `LOG.md` |
+| **100** | People, relationships, identity | `identity/`, `personal/` |
+| **200** | Projects, builds, workstreams | `projects/` |
+| **300** | Systems, infrastructure, integrations | `infrastructure/`, `integrations/` |
+| **400** | *(reserved — do not use)* | — |
+| **500** | Technical knowledge, reference material | `learnings/`, `patterns/` |
+| **600** | Preferences, opinions, rules | `corrections/` (as rules), `identity/` (as preferences) |
+| **700** | Problems, gotchas, resolutions | `patterns/` (as resolved recipes), `learnings/` |
+
+A single fact can be multi-layer; pick the most specific and list
+cross-references in frontmatter `refs:`.
+
+## Priority rules (first match wins)
+
+The classifier walks this list top-to-bottom and picks the first rule
+that fires. Add your own vocabulary to each rule — the defaults below
+are the minimum scaffold.
+
+1. **Personal identity** — core facts about the user (name, roles,
+   values, self-descriptions, long-standing preferences).
+   → `identity/<topic>.md` · Dewey 100
+
+2. **Personal context** — non-work (family, health, hobbies, travel,
+   personal finance).
+   → `personal/<topic>.md` · Dewey 100
+
+3. **Correction or rule** — user told the agent "don't do X", "always
+   do Y", or "remember this".
+   → new file `corrections/NNN-<slug>.md` · Dewey 600
+
+4. **Reusable pattern** — design shape, recipe, code snippet, or
+   solution template that applies across projects.
+   → `patterns/<topic>.md` · Dewey 500 or 700
+
+5. **Field learning** — domain knowledge, gotcha, lesson, insight.
+   → `learnings/<topic>.md` · Dewey 500 or 700
+
+6. **External service, API, or tool** — third-party integration the
+   user works with (SaaS, APIs, libraries).
+   → `integrations/<service>.md` · Dewey 300
+
+7. **Host, network, or hardware** — servers, IPs, devices, physical
+   infrastructure, network topology.
+   → `infrastructure/<host>.md` · Dewey 300
+
+8. **Project or workstream** — named initiative with a start/end,
+   deliverables, or active work.
+   → `projects/<name>.md` · Dewey 200
+
+9. **Location or site** — physical place, client site, venue, home
+   address, office.
+   → `sites/<site>.md` · Dewey 300 (infrastructure-adjacent)
+
+10. **Uncategorised** — matches none of the above.
+    → `LOG.md § Uncategorised` · Dewey 000 (nightly triage reviews)
+
+## Output schema (read by classifier)
+
+The classifier returns JSON shaped like:
+
+```json
+{
+  "target_file": "integrations/openrouter.md",
+  "section": "Authentication",
+  "dewey_layer": "300 Systems",
+  "priority": 6,
+  "rule_matched": "External service, API, or tool",
+  "cross_references": ["infrastructure/api-keys.md"],
+  "confidence": 0.92,
+  "reasoning": "OpenRouter API key rotation procedure — belongs with integrations."
+}
+```
+
+`dewey_layer` uses the `"NNN Label"` form. Label pairings: `000 General`,
+`100 People`, `200 Projects`, `300 Systems`, `500 Technical`, `600
+Preferences`, `700 Problems`.
+
+- `confidence >= 0.85` → triage auto-files to `target_file`.
+- `0.60 <= confidence < 0.85` → triage escalates to `LOG.md §
+  Triage review needed`.
+- `confidence < 0.60` → draft moves to `_inbox/_low-confidence/`.
+
+## Extending this file
+
+- Add new priority rules as the vault grows. Keep them concrete (a rule
+  only useful if the classifier can match on it — vague rules get
+  skipped).
+- Add vocabulary hints inline (brands, client names, product families,
+  platform terms) so the LLM has grounding.
+- Never delete the Dewey stack — automation depends on the layer values
+  being one of `000|100|200|300|500|600|700`.
+- When a rule is superseded, leave it in place and mark
+  `DEPRECATED: <date> — <why>` so old inbox drafts still resolve.
 """
 
 # -- shelf READMEs ---------------------------------------------------------

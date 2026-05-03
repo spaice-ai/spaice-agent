@@ -82,7 +82,7 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 
 # ---------- step 1: find Hermes venv ----------
 echo ""
-echo "→ Step 1/5: Locating Hermes venv..."
+echo "→ Step 1/6: Locating Hermes venv..."
 
 HERMES_VENV=""
 for candidate in \
@@ -119,7 +119,7 @@ echo "  Found: $HERMES_VENV"
 
 # ---------- step 2: pip install ----------
 echo ""
-echo "→ Step 2/5: Installing spaice-agent package..."
+echo "→ Step 2/6: Installing spaice-agent package..."
 echo "  $VENV_PIP install --upgrade \"$PKG_SPEC\""
 
 if ! "$VENV_PIP" install --upgrade --quiet "$PKG_SPEC"; then
@@ -132,18 +132,139 @@ echo "  ✓ Installed spaice-agent $INSTALLED_VER"
 
 # ---------- step 3: install hook + config ----------
 echo ""
-echo "→ Step 3/5: Installing hook + config scaffold for $AGENT_ID..."
+echo "→ Step 3/6: Installing hook + config scaffold for $AGENT_ID..."
 "$VENV_CLI" install "$AGENT_ID" --with-config
 
 # ---------- step 4: bundled vetted skills ----------
 echo ""
-echo "→ Step 4/5: Installing bundled vetted skills..."
+echo "→ Step 4/6: Installing bundled vetted skills..."
 "$VENV_CLI" skills bundled-install
 
 # ---------- step 5: antigravity vendored bundle (standardised) ----------
 echo ""
-echo "→ Step 5/5: Installing vendored antigravity skill library..."
+echo "→ Step 5/6: Installing vendored antigravity skill library..."
 "$VENV_CLI" skills antigravity-install
+
+# ---------- step 6: install CLI dispatcher shim ----------
+#
+# The Hermes venv ships its own `spaice-agent` entry point (Python
+# console-script). But users typically have `~/.local/bin` earlier in
+# $PATH than the venv bin dir — so a *shim* there routes spaice-agent-
+# owned subcommands to the Python CLI and passes everything else
+# through to Hermes. Without it, `spaice-agent mine` and friends get
+# swallowed by Hermes' top-level argparser and return an "invalid
+# choice" error.
+#
+# Source of truth for the shim lives in the package at
+# packaging/spaice-agent-shim.sh. We extract that file from the
+# installed site-packages location and copy it to ~/.local/bin/.
+echo ""
+echo "→ Step 6/6: Installing CLI dispatcher shim to ~/.local/bin/..."
+SHIM_SOURCE=$("$VENV_PY" -c "
+import pathlib, sys
+try:
+    import spaice_agent
+    pkg_root = pathlib.Path(spaice_agent.__file__).parent
+    shim = pkg_root / 'packaging' / 'spaice-agent-shim.sh'
+    if shim.is_file():
+        print(shim)
+        sys.exit(0)
+except Exception:
+    pass
+sys.exit(1)
+" 2>/dev/null || echo "")
+
+if [ -z "$SHIM_SOURCE" ] || [ ! -f "$SHIM_SOURCE" ]; then
+  echo "  ⚠ Shim source not found in package. Subcommand routing may be"
+  echo "    broken — fall back to calling: $VENV_CLI <command>"
+else
+  LOCAL_BIN="$HOME/.local/bin"
+  mkdir -p "$LOCAL_BIN"
+  SHIM_DEST="$LOCAL_BIN/spaice-agent"
+
+  if [ -e "$SHIM_DEST" ] || [ -L "$SHIM_DEST" ]; then
+    # Guard against pathological shape — reject if it's a directory or
+    # some other non-regular-file node. Backup logic only handles files
+    # and symlinks; anything else, bail with a clear error so the user
+    # can resolve manually rather than silently continuing.
+    if [ -d "$SHIM_DEST" ] && [ ! -L "$SHIM_DEST" ]; then
+      echo ""
+      echo "  ✗ $SHIM_DEST is a DIRECTORY, not a file or symlink."
+      echo "    Installer cannot safely overwrite this. Inspect manually:"
+      echo "        ls -la $SHIM_DEST"
+      echo "    Then remove or rename it and re-run the installer."
+      exit 1
+    fi
+    if [ ! -L "$SHIM_DEST" ] && [ ! -f "$SHIM_DEST" ]; then
+      echo ""
+      echo "  ✗ $SHIM_DEST exists but is neither a file nor a symlink."
+      echo "    Installer refuses to touch it. Inspect with: ls -la $SHIM_DEST"
+      exit 1
+    fi
+
+    if ! grep -q "spaice_agent.cli" "$SHIM_DEST" 2>/dev/null; then
+      # Existing file/symlink doesn't route to our Python CLI.
+      BACKUP="$SHIM_DEST.pre-shim-$(date +%Y%m%d-%H%M%S)"
+      if [ -L "$SHIM_DEST" ]; then
+        # It's a symlink. Move it, don't follow it — protects the symlink
+        # target from being clobbered by the subsequent cp.
+        mv "$SHIM_DEST" "$BACKUP"
+        echo "  Backed up existing symlink → $BACKUP"
+      else
+        cp "$SHIM_DEST" "$BACKUP"
+        rm -f "$SHIM_DEST"
+        echo "  Backed up existing shim → $BACKUP"
+      fi
+    else
+      # Already our shim — remove to avoid cp-into-symlink edge case
+      rm -f "$SHIM_DEST"
+    fi
+  fi
+
+  cp "$SHIM_SOURCE" "$SHIM_DEST"
+  chmod +x "$SHIM_DEST"
+  echo "  ✓ Shim installed: $SHIM_DEST"
+
+  # PATH sanity check.
+  #
+  # The shim is the primary entry point for spaice-agent's own
+  # subcommands. If ~/.local/bin isn't on $PATH, the shim is installed
+  # but unreachable — `spaice-agent list` will return "command not
+  # found" and users will think the install failed.
+  #
+  # We don't exit 1 here because (a) the install is otherwise complete
+  # (venv CLI works via full path) and (b) some users deliberately skip
+  # ~/.local/bin. But we DO make the warning extremely loud, and we
+  # offer a one-line fix plus a fallback, so nobody hits "command not
+  # found" without knowing what to do.
+  if ! echo "$PATH" | tr ':' '\n' | grep -qx "$LOCAL_BIN"; then
+    echo ""
+    echo "  ════════════════════════════════════════════════════════════════"
+    echo "  ⚠  ACTION REQUIRED: $LOCAL_BIN is NOT in your \$PATH"
+    echo "  ════════════════════════════════════════════════════════════════"
+    echo ""
+    echo "  The spaice-agent CLI shim was installed, but you won't be able"
+    echo "  to run 'spaice-agent <cmd>' from your shell until you add"
+    echo "  $LOCAL_BIN to \$PATH."
+    echo ""
+    echo "  Fix — add this line to your shell rc (~/.zshrc or ~/.bashrc):"
+    echo ""
+    echo "      export PATH=\"\$HOME/.local/bin:\$PATH\""
+    echo ""
+    echo "  Then restart your shell or run: source ~/.zshrc"
+    echo ""
+    echo "  Or, use the venv CLI directly (works right now, no PATH change):"
+    echo ""
+    echo "      $VENV_CLI <command>"
+    echo ""
+    echo "  ════════════════════════════════════════════════════════════════"
+  elif ! echo "$PATH" | tr ':' '\n' | head -5 | grep -qx "$LOCAL_BIN"; then
+    echo ""
+    echo "  ⚠ $LOCAL_BIN is in \$PATH but not near the front."
+    echo "    Another 'spaice-agent' earlier in PATH may shadow this shim."
+    echo "    Consider moving $LOCAL_BIN to the front of \$PATH in your shell rc."
+  fi
+fi
 
 # ---------- optional step: vault scaffold ----------
 if [ "$WITH_VAULT" = "1" ]; then

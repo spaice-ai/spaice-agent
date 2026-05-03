@@ -467,6 +467,7 @@ BUNDLED_SKILLS = [
     "self-improvement",
     "instinct-learner",
     "joe-guidelines",
+    "memory-conventions",
     "spaice-build-stack",
     "pdf",
     "docx",
