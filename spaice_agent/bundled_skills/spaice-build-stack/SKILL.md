@@ -1,15 +1,15 @@
 ---
 name: spaice-build-stack
 description: |
-  MANDATORY coding workflow for any SPAICE module ≥200 LOC or any file
-  committed to a SPAICE repo. Opus (Jarvis) writes the framework/spec;
-  DeepSeek V4 Pro implements the code via OpenRouter; Codex 5.3 reviews
-  against the original framework context; Jarvis writes tests and
-  integrates. Load on ANY turn that involves writing, implementing,
-  adding, building, coding, or shipping a module, function, class,
-  handler, service, adapter, client, or script for a SPAICE project.
-  Also loads for bug fixes >50 LOC and any change touching concurrency,
-  credentials, or security code. Correction 008 (2026-05-03).
+  MANDATORY coding workflow for ALL production code changes — no
+  threshold, no exceptions. Opus (Jarvis) writes the framework/spec;
+  DeepSeek V4 Pro implements code ≥200 LOC via OpenRouter; direct
+  edits for mechanical wiring skip DeepSeek but still require Codex
+  5.3 review. Jarvis writes tests and integrates. Nothing ships
+  without adversarial review under BuildGuard v1. Load on ANY turn
+  that involves writing, implementing, adding, building, coding, or
+  shipping a module, function, class, handler, service, adapter,
+  client, script, patch, or test. Corrections 008, 009 (2026-05-03).
 version: 1.0.0
 author: Jarvis
 metadata:
