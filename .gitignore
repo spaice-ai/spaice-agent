@@ -7,3 +7,11 @@ __pycache__/
 build/
 dist/
 .DS_Store
+
+# Auto-generated; don't commit
+.venv/
+spaice_agent/__pycache__/
+spaice_agent/**/__pycache__/
+tests/__pycache__/
+spaice_agent.egg-info/
+*.pyc
