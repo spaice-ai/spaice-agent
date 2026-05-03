@@ -3,16 +3,21 @@
 #
 # Usage:
 #   curl -sSL https://spaice.ai/install.sh | sh -s <agent_id>
-#   curl -sSL https://spaice.ai/install.sh | sh -s jarvis
 #   curl -sSL https://spaice.ai/install.sh | sh -s jarvis v0.1.0  # pin version
-#   NO_ANTIGRAVITY=1 curl -sSL ... | sh -s jarvis  # skip skill library (saves 66MB + 1443 skills)
 #
-# What it does:
-#   1. Locates the Hermes venv
-#   2. pip installs spaice-agent into that venv
-#   3. Runs `spaice-agent install --with-config <agent_id>`
-#   4. Installs the antigravity-awesome-skills library (1,443+ skills)
-#   5. Runs `spaice-agent doctor <agent_id>` and prints next steps
+# By default, installs:
+#   1. spaice-agent package into the Hermes venv
+#   2. Hook shim + scaffolded config.yaml for <agent_id>
+#   3. Bundled VETTED skills: gsd, self-improvement, instinct-learner
+#      (shipped with the package, version-pinned, auditable in one repo)
+#
+# Optional extras (not installed by default — explicit opt-in required):
+#   WITH_ANTIGRAVITY=1   Add the 1,443-skill community library
+#                        (github.com/sickn33/antigravity-awesome-skills)
+#                        — UNVETTED community skills, review before use.
+#
+# Design note: Hermes skills run code. Every skill installed means every
+# skill trusted. Defaults stay small and audited; expansion is opt-in.
 set -eu
 
 # ---------- args ----------
@@ -92,29 +97,28 @@ fi
 INSTALLED_VER=$("$VENV_CLI" version)
 echo "  ✓ Installed spaice-agent $INSTALLED_VER"
 
-# ---------- step 3: install hook + config ----------
+# ---------- step 3: install hook + config + bundled skills ----------
 echo ""
 echo "→ Step 3/5: Installing hook + config scaffold for $AGENT_ID..."
-
 "$VENV_CLI" install "$AGENT_ID" --with-config
 
-# ---------- step 4: antigravity-awesome-skills (optional, default on) ----------
 echo ""
-echo "→ Step 4/5: Installing skill library (antigravity-awesome-skills)..."
-HERMES_SKILLS_DIR="$HOME/.hermes/skills/antigravity"
-if [ "${NO_ANTIGRAVITY:-0}" = "1" ]; then
-  echo "  Skipped (NO_ANTIGRAVITY=1)"
-elif [ -d "$HERMES_SKILLS_DIR" ] && [ "$(ls -A "$HERMES_SKILLS_DIR" 2>/dev/null | head -1)" ]; then
-  echo "  Skipped (already installed at $HERMES_SKILLS_DIR)"
-  echo "  To refresh: rm -rf $HERMES_SKILLS_DIR && re-run installer"
-elif ! command -v npx >/dev/null 2>&1; then
-  echo "  ⚠ npx not found — skipping skill library"
-  echo "    Install Node.js (brew install node / apt install nodejs) and re-run"
-else
-  if npx --yes antigravity-awesome-skills --path "$HERMES_SKILLS_DIR" 2>&1 | tail -5; then
-    echo "  ✓ Skill library installed at $HERMES_SKILLS_DIR"
+echo "→ Step 4/5: Installing bundled vetted skills (gsd, self-improvement, instinct-learner)..."
+"$VENV_CLI" skills bundled-install
+
+# ---------- step 4b: antigravity-awesome-skills (OPT-IN ONLY) ----------
+if [ "${WITH_ANTIGRAVITY:-0}" = "1" ]; then
+  echo ""
+  echo "→ Step 4b/5: Installing antigravity-awesome-skills (1,443+ community skills)..."
+  echo "  WARNING: these are UNVETTED community skills. Review before use."
+  HERMES_SKILLS_DIR="$HOME/.hermes/skills/antigravity"
+  if [ -d "$HERMES_SKILLS_DIR" ] && [ "$(ls -A "$HERMES_SKILLS_DIR" 2>/dev/null | head -1)" ]; then
+    echo "  Skipped (already installed at $HERMES_SKILLS_DIR)"
+  elif ! command -v npx >/dev/null 2>&1; then
+    echo "  ⚠ npx not found — skipping. Install Node.js and run: spaice-agent skills antigravity-install"
   else
-    echo "  ⚠ Skill library install failed — agent works without it, but with fewer skills"
+    npx --yes antigravity-awesome-skills --path "$HERMES_SKILLS_DIR" 2>&1 | tail -3
+    echo "  ✓ Antigravity library installed. Review skills before use."
   fi
 fi
 
@@ -133,6 +137,11 @@ echo "    2. Add credentials to ~/.Hermes/credentials/"
 echo "    3. Restart Hermes so the hook loads"
 echo "    4. Verify: $VENV_CLI doctor $AGENT_ID"
 echo ""
-echo "  To upgrade later: $VENV_CLI upgrade"
-echo "  To list agents:   $VENV_CLI list"
+echo "  To upgrade later:  $VENV_CLI upgrade"
+echo "  To list agents:    $VENV_CLI list"
+if [ "${WITH_ANTIGRAVITY:-0}" != "1" ]; then
+  echo ""
+  echo "  Optional: add the 1,443-skill community library (unvetted):"
+  echo "    $VENV_CLI skills antigravity-install"
+fi
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
