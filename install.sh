@@ -3,7 +3,18 @@
 #
 # Usage:
 #   curl -sSL https://spaice.ai/install.sh | sh -s <agent_id>
-#   curl -sSL https://spaice.ai/install.sh | sh -s jarvis v0.1.0  # pin version
+#   curl -sSL https://spaice.ai/install.sh | sh -s jarvis v0.2.0  # pin version
+#
+#   # Optional flags (prefix with --):
+#   curl -sSL https://spaice.ai/install.sh | sh -s <agent_id> <version> --with-vault
+#   curl -sSL https://spaice.ai/install.sh | sh -s <agent_id> <version> --full
+#
+# Flags:
+#   --with-vault  Also create the vault root (~/<agent_id>/) and scaffold
+#                 it with conventions, shelf READMEs, and starter templates
+#                 (20 files). Skipped by default so existing installs aren't
+#                 disturbed.
+#   --full        Shorthand for --with-vault (and future --with-* flags).
 #
 # Standardised install (no flags). Every SPAICE agent gets:
 #   1. spaice-agent package into the Hermes venv
@@ -21,14 +32,37 @@ set -eu
 
 # ---------- args ----------
 AGENT_ID="${1:-}"
-VERSION_SPEC="${2:-main}"   # git ref/tag/branch — default: main
 
 if [ -z "$AGENT_ID" ]; then
-  echo "usage: $0 <agent_id> [version_spec]"
+  echo "usage: $0 <agent_id> [version_spec] [--with-vault | --full]"
   echo "example: $0 jarvis"
   echo "example: $0 scope-bot v0.2.0"
+  echo "example: $0 jarvis v0.2.0 --with-vault"
   exit 1
 fi
+shift
+
+# Second positional is optional version_spec (only if it doesn't start with --).
+VERSION_SPEC="main"
+if [ $# -gt 0 ] && [ "${1#--}" = "$1" ]; then
+  VERSION_SPEC="$1"
+  shift
+fi
+
+# Remaining args are flags.
+WITH_VAULT=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --with-vault) WITH_VAULT=1 ;;
+    --full)       WITH_VAULT=1 ;;
+    *)
+      echo "ERROR: unknown flag: $1" >&2
+      echo "usage: $0 <agent_id> [version_spec] [--with-vault | --full]" >&2
+      exit 1
+      ;;
+  esac
+  shift
+done
 
 # Validate agent_id: lowercase alnum + hyphens only
 if ! echo "$AGENT_ID" | grep -qE '^[a-z][a-z0-9-]*$'; then
@@ -110,6 +144,28 @@ echo "→ Step 4/5: Installing bundled vetted skills..."
 echo ""
 echo "→ Step 5/5: Installing vendored antigravity skill library..."
 "$VENV_CLI" skills antigravity-install
+
+# ---------- optional step: vault scaffold ----------
+if [ "$WITH_VAULT" = "1" ]; then
+  echo ""
+  echo "→ Optional: Creating + scaffolding vault for $AGENT_ID..."
+  VAULT_ROOT="$HOME/$AGENT_ID"
+  if [ ! -d "$VAULT_ROOT" ]; then
+    mkdir -p "$VAULT_ROOT"
+    echo "  Created vault root: $VAULT_ROOT"
+  fi
+  # Do NOT swallow failures — the user explicitly asked for vault setup.
+  # If scaffold fails, fail loudly so they know the install is incomplete.
+  if ! "$VENV_CLI" vault scaffold "$AGENT_ID"; then
+    echo ""
+    echo "✗ Vault scaffold failed. Your agent is installed but the vault"
+    echo "  was NOT initialised. Inspect with:"
+    echo "    $VENV_CLI vault check $AGENT_ID"
+    echo "  Then retry:"
+    echo "    $VENV_CLI vault scaffold $AGENT_ID"
+    exit 1
+  fi
+fi
 
 # ---------- doctor ----------
 echo ""

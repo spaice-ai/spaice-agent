@@ -40,7 +40,13 @@ _SPECIAL_DIR_PURPOSES: Dict[str, str] = {
 
 def _shelf_readme(shelf: str) -> str:
     purpose = _SHELF_PURPOSES.get(shelf, "content")
-    return f"""# {shelf.title()}
+    return f"""---
+title: {shelf} shelf
+date: 2026-01-01
+tags: [shelf, readme]
+---
+
+# {shelf.title()}
 
 {purpose}
 
@@ -65,7 +71,13 @@ tags: [<tag1>, <tag2>]
 
 def _special_readme(dir_name: str) -> str:
     purpose = _SPECIAL_DIR_PURPOSES.get(dir_name, "special directory")
-    return f"""# {dir_name}
+    return f"""---
+title: {dir_name} directory
+date: 2026-01-01
+tags: [special, readme]
+---
+
+# {dir_name}
 
 {purpose}
 
@@ -160,8 +172,8 @@ All dates must be in **ISO 8601** format: `YYYY-MM-DD`.  Do not use
 
 Link to other vault pages using wikilink syntax:
 
-- `[[target]]` — links to `target.md` in the same vault.
-- `[[target|alias]]` — displays “alias” but links to `target.md`.
+- `[[target-page]]` — links to `target-page.md` in the same vault.
+- `[[target-page|alias]]` — displays “alias” but links to `target-page.md`.
 
 Wikilinks are resolved relative to the vault root.  Do not use absolute
 filesystem paths.
@@ -269,7 +281,7 @@ tags: [project]
 
 **Goal:** <one-line goal>
 
-**Key links:** [[...]]
+**Key links:** (add wikilinks here, e.g. `[[related-project]]`)
 
 ## Notes
 

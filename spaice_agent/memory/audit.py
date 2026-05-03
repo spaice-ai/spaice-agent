@@ -82,9 +82,19 @@ def _build_path_index(vault_root: Path) -> Tuple[Dict[str, Path], Dict[str, Path
 
 
 def _extract_wikilinks(content: str) -> List[str]:
-    """Return list of targets from [[...]] wikilinks, ignoring aliases."""
+    """Return list of targets from [[...]] wikilinks, ignoring aliases.
+
+    Skips content inside fenced code blocks (``` ... ```) and inline code
+    spans (`...`) so that wikilink-syntax documentation doesn't produce
+    broken-link false positives.
+    """
+    # Strip fenced code blocks first (``` or ~~~, non-greedy across lines)
+    scrubbed = re.sub(r"```.*?```", "", content, flags=re.DOTALL)
+    scrubbed = re.sub(r"~~~.*?~~~", "", scrubbed, flags=re.DOTALL)
+    # Strip inline code spans (single backtick pairs)
+    scrubbed = re.sub(r"`[^`]*`", "", scrubbed)
     targets: List[str] = []
-    for m in re.finditer(r"\[\[([^\]]+)\]\]", content):
+    for m in re.finditer(r"\[\[([^\]]+)\]\]", scrubbed):
         raw = m.group(1)
         # Split on |, #, /? Simple: use everything before first | or #
         target = raw.split("|")[0].split("#")[0].strip()
@@ -130,12 +140,19 @@ def check_orphaned_inbox(vault_root: Path) -> List[AuditFinding]:
 
 
 def check_duplicate_files(vault_root: Path) -> List[AuditFinding]:
-    """Detect identical filenames in different vault directories."""
+    """Detect identical filenames in different vault directories.
+
+    Exempts per-directory standard files like README.md and index.md — those
+    are intentionally duplicated across shelves (one per shelf).
+    """
+    EXEMPT_NAMES = {"README.md", "index.md", "INDEX.md"}
     findings: List[AuditFinding] = []
     # Group by filename (the last path component, e.g., 'note.md')
     name_map: Dict[str, List[Path]] = defaultdict(list)
     for full in _scan_md_files(vault_root):
         name = full.name
+        if name in EXEMPT_NAMES:
+            continue
         name_map[name].append(full)
 
     for fname, paths in name_map.items():

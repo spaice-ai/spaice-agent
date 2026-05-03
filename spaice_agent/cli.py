@@ -608,6 +608,244 @@ def cmd_skills(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
+# vault — scaffold/check/status
+# ---------------------------------------------------------------------------
+
+def _resolve_vault_paths(agent_id: Optional[str]):
+    """Resolve VaultPaths for agent_id, with helpful errors."""
+    from spaice_agent.memory.paths import VaultNotFoundError, VaultPaths
+
+    if not agent_id:
+        print("✗ agent_id required (pass as positional argument)", file=sys.stderr)
+        return None
+    try:
+        return VaultPaths.for_agent(agent_id, create_agent_dir=True)
+    except VaultNotFoundError as exc:
+        print(f"✗ {exc}", file=sys.stderr)
+        print(f"  Create the vault root first: mkdir -p ~/{agent_id}", file=sys.stderr)
+        return None
+
+
+def cmd_vault(args: argparse.Namespace) -> int:
+    from spaice_agent.memory.vault import (
+        is_scaffolded,
+        scaffold_vault,
+    )
+
+    vp = _resolve_vault_paths(args.agent_id)
+    if vp is None:
+        return 1
+
+    action = args.vault_action
+
+    if action == "scaffold":
+        # Only mutate the filesystem when NOT in dry-run — ensure_skeleton
+        # creates directories, which violates the dry-run contract otherwise.
+        if not args.dry_run:
+            vp.ensure_skeleton()
+        elif not vp.inbox.exists():
+            # Dry-run against a missing skeleton — report what ensure_skeleton
+            # would do, then stop. Don't pretend the scaffold itself would run.
+            print(f"[dry-run] Vault: {vp.vault_root}")
+            print(f"[dry-run] would create skeleton dirs (run without --dry-run "
+                  f"to scaffold)")
+            return 0
+        try:
+            report = scaffold_vault(
+                vp,
+                overwrite=args.force,
+                dry_run=args.dry_run,
+            )
+        except Exception as exc:
+            print(f"✗ scaffold failed: {exc}", file=sys.stderr)
+            return 1
+        prefix = "[dry-run] " if report.dry_run else ""
+        print(f"{prefix}Vault: {report.vault_root}")
+        print(f"{prefix}{report.summary_line()}")
+        return 0
+
+    if action == "check":
+        ok = is_scaffolded(vp)
+        if ok:
+            print(f"✓ Vault fully scaffolded: {vp.vault_root}")
+            return 0
+        print(f"✗ Vault not fully scaffolded: {vp.vault_root}")
+        print(f"  Run: spaice-agent vault scaffold {args.agent_id}")
+        return 1
+
+    if action == "status":
+        print(f"Vault: {vp.vault_root}")
+        print(f"Agent config: {vp.agent_config_dir}")
+        print()
+        print("Shelves:")
+        for shelf in vp.shelves:
+            shelf_dir = vp.shelf_path(shelf)
+            if shelf_dir.exists():
+                count = sum(1 for _ in shelf_dir.rglob("*.md"))
+                print(f"  {shelf:20s} {count:4d} .md")
+            else:
+                print(f"  {shelf:20s}  (missing)")
+        print()
+        print("Special dirs:")
+        for d in ("_inbox", "_continuity", "_dashboard", "_templates", "_archive"):
+            p = vp.vault_root / d
+            if p.exists():
+                count = sum(1 for _ in p.rglob("*.md"))
+                print(f"  {d:20s} {count:4d} .md")
+            else:
+                print(f"  {d:20s}  (missing)")
+        return 0
+
+    print(f"✗ Unknown vault action: {action}", file=sys.stderr)
+    return 1
+
+
+# ---------------------------------------------------------------------------
+# mine / triage / dashboards / recall / summarise / audit
+# Thin CLI wrappers around spaice_agent.memory.* modules.
+# ---------------------------------------------------------------------------
+
+def cmd_mine(args: argparse.Namespace) -> int:
+    from spaice_agent.memory.mine import Miner
+
+    vp = _resolve_vault_paths(args.agent_id)
+    if vp is None:
+        return 1
+    try:
+        miner = Miner.for_agent(args.agent_id)
+        # --limit maps to max_utterances — cost control per run.
+        report = miner.run(max_utterances=args.limit)
+    except Exception as exc:
+        print(f"✗ mine failed: {exc}", file=sys.stderr)
+        return 1
+    drafts = getattr(report, "drafts_written", getattr(report, "drafts", []))
+    count = len(drafts) if isinstance(drafts, list) else int(drafts or 0)
+    print(f"✓ Mine: {count} draft(s) written → {vp.inbox}")
+    return 0
+
+
+def cmd_triage(args: argparse.Namespace) -> int:
+    from spaice_agent.memory.triage import Triager
+
+    vp = _resolve_vault_paths(args.agent_id)
+    if vp is None:
+        return 1
+    try:
+        triager = Triager.for_agent(args.agent_id)
+        report = triager.run(dry_run=not args.auto)
+    except Exception as exc:
+        print(f"✗ triage failed: {exc}", file=sys.stderr)
+        return 1
+    routed = getattr(report, "routed", getattr(report, "routed_count", "?"))
+    flagged = getattr(report, "flagged", getattr(report, "flagged_count", "?"))
+    print(f"✓ Triage: routed={routed} flagged={flagged}")
+    return 0
+
+
+def cmd_dashboards(args: argparse.Namespace) -> int:
+    from spaice_agent.memory.dashboards import regenerate_all
+
+    vp = _resolve_vault_paths(args.agent_id)
+    if vp is None:
+        return 1
+    try:
+        results = regenerate_all(vp.vault_root)
+    except Exception as exc:
+        print(f"✗ dashboards failed: {exc}", file=sys.stderr)
+        return 1
+    print(f"✓ Regenerated {len(results)} dashboard(s) → {vp.dashboard}")
+    for r in results:
+        path = getattr(r, "output_path", getattr(r, "path", r))
+        print(f"    {path}")
+    return 0
+
+
+def cmd_recall(args: argparse.Namespace) -> int:
+    from spaice_agent.memory.recall import Recaller
+
+    vp = _resolve_vault_paths(args.agent_id)
+    if vp is None:
+        return 1
+    try:
+        recaller = Recaller.for_agent(args.agent_id)
+        triggers = recaller.extract_triggers(args.text)
+        if not triggers:
+            # Fall back to using the raw query as a single trigger
+            triggers = [args.text]
+        hits = recaller.scan(triggers, max_hits=args.limit)
+    except Exception as exc:
+        print(f"✗ recall failed: {exc}", file=sys.stderr)
+        return 1
+    if not hits:
+        print(f"  No matches for: {args.text!r}")
+        return 0
+    print(f"Top {len(hits)} match(es) for {args.text!r}:")
+    for h in hits:
+        path = getattr(h, "path", h)
+        score = getattr(h, "score", "")
+        print(f"  [{score}] {path}")
+    return 0
+
+
+def cmd_summarise(args: argparse.Namespace) -> int:
+    import asyncio
+
+    from spaice_agent.config import load_agent_config
+    from spaice_agent.memory.summarise import summarise_session
+
+    vp = _resolve_vault_paths(args.agent_id)
+    if vp is None:
+        return 1
+    try:
+        cfg = load_agent_config(args.agent_id)
+        summary = asyncio.run(summarise_session(args.session_id, cfg))
+    except Exception as exc:
+        print(f"✗ summarise failed: {exc}", file=sys.stderr)
+        return 1
+    print(f"✓ Summary: {summary.word_count} words, ${summary.cost_usd:.4f}")
+    print(f"  Written under: {vp.archive / 'sessions'}")
+    return 0
+
+
+def cmd_audit(args: argparse.Namespace) -> int:
+    from spaice_agent.memory.audit import audit_vault
+
+    vp = _resolve_vault_paths(args.agent_id)
+    if vp is None:
+        return 1
+    try:
+        report = audit_vault(vp.vault_root)
+    except Exception as exc:
+        print(f"✗ audit failed: {exc}", file=sys.stderr)
+        return 1
+
+    if args.json:
+        payload = {
+            "vault_root": str(vp.vault_root),
+            "counts": {
+                "error": sum(1 for f in report.findings if f.severity == "error"),
+                "warn": sum(1 for f in report.findings if f.severity == "warn"),
+                "info": sum(1 for f in report.findings if f.severity == "info"),
+            },
+            "findings": [
+                {"severity": f.severity, "path": f.path, "message": f.message}
+                for f in report.findings
+            ],
+        }
+        print(json.dumps(payload, indent=2))
+    else:
+        print(f"Audit: {vp.vault_root}")
+        if not report.findings:
+            print("  ✓ Clean — no findings")
+            return 0
+        for f in report.findings:
+            mark = {"error": "✗", "warn": "⚠", "info": "·"}.get(f.severity, "•")
+            print(f"  {mark} [{f.severity:5s}] {f.path}: {f.message}")
+    # exit 1 if any errors, else 0
+    return 1 if any(f.severity == "error" for f in report.findings) else 0
+
+
+# ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
 
@@ -695,6 +933,77 @@ def main(argv: Optional[List[str]] = None) -> int:
         help="For 'install' actions: overwrite existing",
     )
     p_skills.set_defaults(func=cmd_skills)
+
+    # vault — scaffold/check/inspect the memory vault
+    p_vault = sub.add_parser(
+        "vault",
+        help="Manage the memory vault (scaffold, check, inspect)",
+    )
+    p_vault.add_argument(
+        "vault_action",
+        choices=["scaffold", "check", "status"],
+        help=(
+            "scaffold: populate empty vault skeleton with conventions, "
+            "READMEs, and templates (20 files). "
+            "check: report whether vault is fully scaffolded. "
+            "status: show vault root path + file counts by shelf."
+        ),
+    )
+    p_vault.add_argument("agent_id", help="Agent ID (e.g. jarvis)")
+    p_vault.add_argument(
+        "--force", action="store_true",
+        help="For 'scaffold': overwrite existing files",
+    )
+    p_vault.add_argument(
+        "--dry-run", action="store_true",
+        help="For 'scaffold': compute actions without writing",
+    )
+    p_vault.set_defaults(func=cmd_vault)
+
+    # memory pipeline commands — thin CLI wrappers around memory/ modules
+    p_mine = sub.add_parser(
+        "mine", help="Mine recent sessions for new facts → _inbox/ drafts",
+    )
+    p_mine.add_argument("agent_id", help="Agent ID")
+    p_mine.add_argument("--limit", type=int, default=20,
+                        help="Max user utterances to process per run (cost control)")
+    p_mine.set_defaults(func=cmd_mine)
+
+    p_triage = sub.add_parser(
+        "triage", help="Triage _inbox/ drafts into canonical shelves",
+    )
+    p_triage.add_argument("agent_id", help="Agent ID")
+    p_triage.add_argument("--auto", action="store_true",
+                          help="Auto-route high-confidence drafts; flag the rest")
+    p_triage.set_defaults(func=cmd_triage)
+
+    p_dashboards = sub.add_parser(
+        "dashboards", help="Regenerate auto-dashboards under _dashboard/",
+    )
+    p_dashboards.add_argument("agent_id", help="Agent ID")
+    p_dashboards.set_defaults(func=cmd_dashboards)
+
+    p_recall = sub.add_parser(
+        "recall", help="Query the vault for files matching text",
+    )
+    p_recall.add_argument("agent_id", help="Agent ID")
+    p_recall.add_argument("text", help="Text to match (proper nouns, keywords)")
+    p_recall.add_argument("--limit", type=int, default=5, help="Max results")
+    p_recall.set_defaults(func=cmd_recall)
+
+    p_summarise = sub.add_parser(
+        "summarise", help="Summarise a session transcript → _archive/sessions/",
+    )
+    p_summarise.add_argument("agent_id", help="Agent ID")
+    p_summarise.add_argument("session_id", help="Hermes session ID to summarise")
+    p_summarise.set_defaults(func=cmd_summarise)
+
+    p_audit = sub.add_parser(
+        "audit", help="Run vault health checks (orphans, broken links, stale dashboards)",
+    )
+    p_audit.add_argument("agent_id", help="Agent ID")
+    p_audit.add_argument("--json", action="store_true", help="Emit findings as JSON")
+    p_audit.set_defaults(func=cmd_audit)
 
     args = parser.parse_args(argv)
     return args.func(args)
