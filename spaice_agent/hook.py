@@ -26,6 +26,36 @@ logger = logging.getLogger(__name__)
 HandleFn = Callable[[str, dict], Awaitable[Optional[dict]]]
 RegisterFn = Callable[[Any], None]
 
+# ---------------------------------------------------------------------------
+# BuildGuard instance cache (keyed by agent_id, survives a session)
+# ---------------------------------------------------------------------------
+_GUARDS: dict[str, Any] = {}
+
+
+def _get_guard(agent_id: str, cfg: Any) -> Optional[Any]:
+    """Return a cached :class:`BuildGuard` for *agent_id*, or create one.
+
+    Returns ``None`` when the ``BuildGuard`` import is unavailable so that the
+    caller can degrade without crashing the host agent.
+    """
+    guard = _GUARDS.get(agent_id)
+    if guard is not None:
+        return guard
+
+    try:
+        from spaice_agent.orchestrator import BuildGuard
+    except ImportError:
+        logger.warning("BuildGuard unavailable; guard disabled for %s", agent_id)
+        return None
+
+    guard = BuildGuard(cfg)
+    _GUARDS[agent_id] = guard
+    return guard
+
+
+# ---------------------------------------------------------------------------
+# Public factory
+# ---------------------------------------------------------------------------
 
 def make_hook(agent_id: str) -> Tuple[HandleFn, RegisterFn]:
     """Return (handle, register_tools) closures bound to this agent_id.
@@ -55,6 +85,10 @@ async def _handle(
 
     MUST NEVER raise.
     """
+    # fmt: off
+    # ------------------------------------------------------------------
+    # Deferred imports – if they fail the whole handler is a no-op
+    # ------------------------------------------------------------------
     try:
         from spaice_agent.config import load_agent_config
         from spaice_agent.orchestrator import handle_message
@@ -63,7 +97,47 @@ async def _handle(
             "spaice_agent import failed; middleware disabled: %s", exc,
         )
         return None
+    # fmt: on
 
+    # ------------------------------------------------------------------
+    # NEW – pre_tool_call guard (BuildGuard)
+    # ------------------------------------------------------------------
+    if event_type == "pre_tool_call":
+        try:
+            tool_name = context.get("tool_name")
+            tool_args = context.get("tool_args", {})
+
+            if not isinstance(tool_name, str) or not tool_name.strip():
+                logger.debug("pre_tool_call without valid tool_name; ignored")
+                return None
+
+            cfg = load_agent_config(agent_id)          # already imported above
+            guard = _get_guard(agent_id, cfg)
+            if guard is None:
+                # BuildGuard module missing – safe pass-through
+                return None
+
+            decision = guard.check_pending_write(tool_name, tool_args)
+
+            if decision.allowed:
+                return None  # pass-through
+
+            # Build the refusal message
+            target = tool_args.get("path", "unknown target")
+            reason = getattr(decision, "reason", "policy violation")
+            reply = (
+                f"BUILD-GUARD refused write to {target}: {reason}. "
+                "Fire DeepSeek V4 Pro for this module via OpenRouter first."
+            )
+            return {"reply": reply}
+
+        except Exception as exc:  # noqa: BLE001 – defensive
+            logger.warning("BuildGuard pre_tool_call handler failed: %s", exc)
+            return None
+
+    # ------------------------------------------------------------------
+    # Existing pre-turn / pre-message handling (unchanged)
+    # ------------------------------------------------------------------
     message = (context or {}).get("message") or ""
     if not isinstance(message, str) or not message.strip():
         return None

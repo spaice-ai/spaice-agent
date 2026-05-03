@@ -349,6 +349,13 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     except ImportError as exc:
         check("spaice_agent importable", False, str(exc))
 
+    # BuildGuard v1 — governance middleware must be importable
+    try:
+        from spaice_agent.orchestrator import BuildGuard, BuildGuardDecision  # noqa: F401
+        check("BuildGuard v1 active (pipeline enforcement)", True)
+    except ImportError as exc:
+        check("BuildGuard v1 active (pipeline enforcement)", False, str(exc))
+
     # Config file exists
     cfg_path = _config_path(agent_id)
     check("Config file exists", cfg_path.exists(), str(cfg_path))
