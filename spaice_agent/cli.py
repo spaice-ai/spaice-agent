@@ -287,6 +287,12 @@ def cmd_upgrade(args: argparse.Namespace) -> int:
         print(f"→ Refreshing bundled skills (package v{_get_version()})")
         cmd_skills(argparse.Namespace(skills_action="bundled-install", force=True))
 
+    # Also refresh vendored antigravity bundle if already installed
+    ag_manifest = _antigravity_dir() / ".spaice-antigravity-manifest.json"
+    if ag_manifest.exists() or _antigravity_dir().exists():
+        print(f"→ Refreshing antigravity vendored bundle (package v{_get_version()})")
+        cmd_skills(argparse.Namespace(skills_action="antigravity-install", force=True))
+
     print(f"✓ Upgrade complete. Package version: {_get_version()}")
     return 0
 
@@ -376,14 +382,18 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             "run `spaice-agent skills bundled-install`",
         )
 
-    # Antigravity skill library (informational — opt-in community, not required)
+    # Antigravity skill library (standardised — vendored at pinned commit)
     antigravity_dir = Path.home() / ".hermes" / "skills" / "antigravity"
     if antigravity_dir.exists():
         skill_count = len(list(antigravity_dir.glob("*/SKILL.md")))
-        # Info line, not a check (doesn't affect exit code)
-        print(f"  ○ Antigravity community library  ({skill_count} skills — opt-in)")
+        check("Antigravity library installed", skill_count > 0,
+              f"{skill_count} skills at {antigravity_dir}")
     else:
-        print(f"  ○ Antigravity community library  (not installed — opt-in via `spaice-agent skills antigravity-install`)")
+        check(
+            "Antigravity library installed",
+            False,
+            "run `spaice-agent skills antigravity-install`",
+        )
 
     return 0 if ok else 1
 
@@ -392,7 +402,16 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 # skills — manage the bundled + optional skill libraries
 # ---------------------------------------------------------------------------
 
-BUNDLED_SKILLS = ["gsd", "self-improvement", "instinct-learner"]
+BUNDLED_SKILLS = [
+    "gsd",
+    "self-improvement",
+    "instinct-learner",
+    "pdf",
+    "docx",
+    "xlsx",
+    "pptx",
+    "gmail",
+]
 
 
 def _bundled_skills_src() -> Path:
@@ -472,53 +491,44 @@ def cmd_skills(args: argparse.Namespace) -> int:
             print(f"  Refresh: spaice-agent skills bundled-install")
         return 0
 
-    # ---- antigravity (opt-in community, 1,443 skills) ----
+    # ---- antigravity (vendored bundle, pinned commit, shipped with package) ----
     if action == "antigravity-install":
+        src = _bundled_skills_src() / "antigravity"
         dest = _antigravity_dir()
+        if not src.exists():
+            print(f"✗ Antigravity bundle not found at {src} (package install broken?)")
+            return 1
         if dest.exists() and not args.force:
             count = len(list(dest.glob("*/SKILL.md")))
             print(f"Already installed at {dest} ({count} skills).")
-            print("Use --force to reinstall, or `spaice-agent skills antigravity-update`.")
+            print("Use --force to reinstall, or `spaice-agent upgrade` to pick up new bundle versions.")
             return 0
         if dest.exists() and args.force:
             shutil.rmtree(dest)
-        if not shutil.which("npx"):
-            print("✗ npx not found. Install Node.js first:")
-            print("    macOS:  brew install node")
-            print("    Linux:  apt install nodejs npm")
-            return 1
-        print("WARNING: antigravity-awesome-skills is an UNVETTED community library.")
-        print("         Review skills before invoking them in sensitive contexts.")
-        print(f"→ Installing to {dest}...")
-        try:
-            subprocess.run(
-                ["npx", "--yes", "antigravity-awesome-skills", "--path", str(dest)],
-                check=True,
-            )
-        except subprocess.CalledProcessError as exc:
-            print(f"✗ Install failed: {exc}")
-            return 1
+        print(f"→ Installing {sum(1 for _ in src.glob('*/SKILL.md'))} vendored skills to {dest}...")
+        shutil.copytree(src, dest)
+        # Write manifest
+        upstream_md = src / "UPSTREAM.md"
+        manifest = {
+            "installed_at": datetime.now(timezone.utc).isoformat(),
+            "package_version": _get_version(),
+            "source": "spaice_agent.bundled_skills.antigravity",
+            "upstream": "github.com/sickn33/antigravity-awesome-skills",
+            "upstream_notes": upstream_md.read_text() if upstream_md.exists() else "",
+        }
+        (dest / ".spaice-antigravity-manifest.json").write_text(
+            json.dumps(manifest, indent=2)
+        )
         count = len(list(dest.glob("*/SKILL.md")))
         print(f"✓ Installed {count} skills at {dest}")
+        print(f"  Upgrade via: spaice-agent upgrade")
         return 0
 
     if action == "antigravity-update":
-        dest = _antigravity_dir()
-        if not dest.exists():
-            print("Not installed. Run `spaice-agent skills antigravity-install` first.")
-            return 1
-        shutil.rmtree(dest)
-        try:
-            subprocess.run(
-                ["npx", "--yes", "antigravity-awesome-skills", "--path", str(dest)],
-                check=True,
-            )
-        except subprocess.CalledProcessError as exc:
-            print(f"✗ Update failed: {exc}")
-            return 1
-        count = len(list(dest.glob("*/SKILL.md")))
-        print(f"✓ Updated to latest ({count} skills)")
-        return 0
+        # Update = reinstall from vendored bundle (picks up new package version)
+        args.force = True
+        args.skills_action = "antigravity-install"
+        return cmd_skills(args)
 
     if action == "antigravity-remove":
         dest = _antigravity_dir()
@@ -531,8 +541,9 @@ def cmd_skills(args: argparse.Namespace) -> int:
 
     if action == "antigravity-status":
         dest = _antigravity_dir()
+        manifest_path = dest / ".spaice-antigravity-manifest.json"
         if not dest.exists():
-            print("Antigravity library: NOT INSTALLED (opt-in)")
+            print("Antigravity library: NOT INSTALLED")
             print("  Install with: spaice-agent skills antigravity-install")
             return 1
         count = len(list(dest.glob("*/SKILL.md")))
@@ -543,6 +554,15 @@ def cmd_skills(args: argparse.Namespace) -> int:
         print(f"  Path:   {dest}")
         print(f"  Skills: {count}")
         print(f"  Size:   {size_mb} MB")
+        if manifest_path.exists():
+            m = json.loads(manifest_path.read_text())
+            current = _get_version()
+            stale = m.get("package_version") != current
+            print(f"  Pkg ver: {m.get('package_version')} {'⚠ stale' if stale else ''}")
+            print(f"  Source:  {m.get('source')}")
+            if stale:
+                print(f"\n  Package upgraded (now v{current}).")
+                print(f"  Refresh: spaice-agent skills antigravity-install --force")
         return 0
 
     # ---- status summary ----
@@ -559,13 +579,21 @@ def cmd_skills(args: argparse.Namespace) -> int:
                   f"— pkg v{m.get('package_version')}")
         else:
             print(f"  ✗ Bundled (vetted): NOT INSTALLED")
-        # Antigravity
+        # Antigravity (vendored, standardised)
+        ag_manifest = _antigravity_dir() / ".spaice-antigravity-manifest.json"
         ag = _antigravity_dir()
-        if ag.exists():
+        if ag_manifest.exists():
+            m = json.loads(ag_manifest.read_text())
+            stale = m.get("package_version") != _get_version()
+            mark = "⚠" if stale else "✓"
             count = len(list(ag.glob("*/SKILL.md")))
-            print(f"  ○ Antigravity (community, unvetted): {count} skills")
+            print(f"  {mark} Antigravity (vendored): {count} skills "
+                  f"— pkg v{m.get('package_version')}")
+        elif ag.exists():
+            count = len(list(ag.glob("*/SKILL.md")))
+            print(f"  ⚠ Antigravity (vendored): {count} skills (no manifest — reinstall)")
         else:
-            print(f"  ○ Antigravity (community, unvetted): not installed (opt-in)")
+            print(f"  ✗ Antigravity (vendored): NOT INSTALLED")
         return 0
 
     print(f"Unknown action: {action}")
@@ -649,9 +677,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         ],
         help=(
             "status: overall summary. "
-            "bundled-install: install the 3 vetted skills (gsd, self-improvement, "
-            "instinct-learner) shipped with the package. "
-            "antigravity-*: manage the opt-in 1,443-skill community library."
+            "bundled-install: install the vetted skills (gsd, self-improvement, "
+            "instinct-learner, pdf, docx, xlsx, pptx, gmail) shipped with the package. "
+            "antigravity-*: manage the vendored 1,443-skill community library "
+            "(pinned to a specific upstream commit; upgrades ship via `spaice-agent upgrade`)."
         ),
     )
     p_skills.add_argument(

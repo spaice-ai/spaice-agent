@@ -280,18 +280,18 @@ def test_skills_status_overall_empty(tmp_path, monkeypatch, capsys):
 
 
 def test_skills_bundled_install_works(tmp_path, monkeypatch, capsys):
-    """Bundled install copies the 3 packaged skills into ~/.hermes/skills/spaice/."""
-    from spaice_agent.cli import cmd_skills
+    """Bundled install copies the packaged vetted skills into ~/.hermes/skills/spaice/."""
+    from spaice_agent.cli import cmd_skills, BUNDLED_SKILLS
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     exit_code = cmd_skills(FakeArgs(skills_action="bundled-install"))
     assert exit_code == 0
     dest = tmp_path / ".hermes" / "skills" / "spaice"
-    # All 3 bundled skills present
-    for skill in ["gsd", "self-improvement", "instinct-learner"]:
+    # All vetted skills present
+    for skill in BUNDLED_SKILLS:
         assert (dest / skill / "SKILL.md").exists(), f"{skill} missing"
     # Manifest written
     manifest = json.loads((dest / ".spaice-bundled-manifest.json").read_text())
-    assert set(manifest["skills"]) == {"gsd", "self-improvement", "instinct-learner"}
+    assert set(manifest["skills"]) == set(BUNDLED_SKILLS)
 
 
 def test_skills_bundled_status_after_install(tmp_path, monkeypatch, capsys):
@@ -374,17 +374,18 @@ def test_doctor_bundled_skills_ok_when_installed(tmp_path, monkeypatch, capsys):
     cmd_doctor(FakeArgs(agent_id="testbot"))
     captured = capsys.readouterr()
     assert "✓ Bundled vetted skills installed" in captured.out
-    assert "3 skills" in captured.out
+    assert "8 skills" in captured.out
 
 
-def test_doctor_antigravity_is_informational_only(tmp_path, monkeypatch, capsys):
-    """Doctor should show antigravity as ○ (info), not ✗ (failure)."""
+def test_doctor_antigravity_is_required_check(tmp_path, monkeypatch, capsys):
+    """Doctor should treat antigravity as a required standard install (fails if missing)."""
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     cmd_install(FakeArgs(agent_id="testbot", with_config=True))
 
-    cmd_doctor(FakeArgs(agent_id="testbot"))
+    rc = cmd_doctor(FakeArgs(agent_id="testbot"))
     captured = capsys.readouterr()
-    assert "○ Antigravity community library" in captured.out
-    assert "not installed" in captured.out
-    # Should say opt-in
-    assert "opt-in" in captured.out
+    # When missing, it's a ✗ check with install hint
+    assert "Antigravity library installed" in captured.out
+    assert "antigravity-install" in captured.out
+    # Doctor fails (non-zero) because antigravity is standard, not opt-in
+    assert rc != 0
