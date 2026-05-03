@@ -1,10 +1,10 @@
 ---
-name: karpathy-guidelines
-description: Code-quality guardrails for reducing common LLM coding mistakes — overcomplication, scope creep from adjacent-code "improvements", speculative abstractions, and weak success criteria. Load for any non-trivial coding or refactor task. Source — Andrej Karpathy's LLM coding pitfall observations via forrestchang/andrej-karpathy-skills (MIT).
+name: joe-guidelines
+description: Code-quality guardrails for reducing common LLM coding mistakes — overcomplication, scope creep from adjacent-code "improvements", speculative abstractions, and weak success criteria. Load for any non-trivial coding or refactor task. MIT-licensed guidelines, see the skill LICENSE file for attribution.
 license: MIT
 ---
 
-# Karpathy Guidelines — code-quality guardrails for coding tasks
+# Joe Guidelines — code-quality guardrails for coding tasks
 
 Four rules. Bias: caution over speed. For trivial edits (one-line typo fixes, renames), use judgement; these rules are for any change ≥ a single commit's worth of work.
 
@@ -79,8 +79,8 @@ Strong criteria let you loop independently. Weak criteria ("make it work") requi
 
 ## Examples
 
-See `references/examples.md` for concrete before/after patterns across all four rules (load with `skill_view('karpathy-guidelines', 'references/examples.md')` when you need them — ~500 lines, don't load by default).
+See `references/examples.md` for concrete before/after patterns across all four rules (load with `skill_view('joe-guidelines', 'references/examples.md')` when you need them — ~500 lines, don't load by default).
 
 ## Attribution
 
-Derived from [Andrej Karpathy's tweet on LLM coding pitfalls](https://x.com/karpathy/status/2015883857489522876) via [forrestchang/andrej-karpathy-skills](https://github.com/forrestchang/andrej-karpathy-skills). Licensed MIT.
+MIT-licensed. Full upstream attribution is kept in the `LICENSE` file shipped alongside this skill; see that file for source and copyright notice.

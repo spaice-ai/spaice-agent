@@ -466,7 +466,7 @@ BUNDLED_SKILLS = [
     "gsd",
     "self-improvement",
     "instinct-learner",
-    "karpathy-guidelines",
+    "joe-guidelines",
     "spaice-build-stack",
     "pdf",
     "docx",

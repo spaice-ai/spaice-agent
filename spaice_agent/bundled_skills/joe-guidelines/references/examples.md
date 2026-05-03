@@ -1,7 +1,6 @@
 <!--
-Sourced verbatim from forrestchang/andrej-karpathy-skills (MIT).
-https://github.com/forrestchang/andrej-karpathy-skills/blob/main/EXAMPLES.md
-Loaded on demand via skill_view('karpathy-guidelines', 'references/examples.md').
+MIT-licensed reference content. Full attribution in the skill's LICENSE file.
+Loaded on demand via skill_view('joe-guidelines', 'references/examples.md').
 -->
 
 # Examples
