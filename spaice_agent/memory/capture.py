@@ -97,8 +97,14 @@ def _render_frontmatter(
     category: Optional[str],
     tags: tuple[str, ...],
     status: str = "pending",
+    extra: Optional[dict] = None,
 ) -> str:
-    """Render the YAML frontmatter block with stable key order."""
+    """Render the YAML frontmatter block with stable key order.
+
+    Standard keys (id, created_at, source, category, tags, status) ALWAYS
+    appear in that order first. If `extra` is provided, its keys are
+    appended afterwards (sorted by key for deterministic output).
+    """
     # Manually compose to preserve key order without relying on YAML's
     # default_flow_style quirks. This is YAML 1.2 compatible.
     lines = ["---"]
@@ -115,8 +121,32 @@ def _render_frontmatter(
     else:
         lines.append("tags: []")
     lines.append(f"status: {status}")
+    if extra:
+        for k in sorted(extra.keys()):
+            # Reject keys that would collide with the standard set
+            if k in {"id", "created_at", "source", "category", "tags", "status"}:
+                raise InvalidInboxEntryError(
+                    f"extra_frontmatter key {k!r} collides with standard key"
+                )
+            lines.append(f"{k}: {_render_extra_value(extra[k])}")
     lines.append("---")
     return "\n".join(lines)
+
+
+def _render_extra_value(v) -> str:
+    """Render a single extra-frontmatter value with YAML-safe formatting."""
+    if v is None:
+        return "null"
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, (int, float)):
+        return str(v)
+    if isinstance(v, (list, tuple)):
+        if not v:
+            return "[]"
+        return "[" + ", ".join(_yaml_scalar(str(x)) for x in v) + "]"
+    # Default: string scalar
+    return _yaml_scalar(str(v))
 
 
 # Unquoted YAML scalars: allow alphanumerics, underscore, hyphen, dot, slash only.
@@ -134,7 +164,12 @@ def _yaml_scalar(s: str) -> str:
     return f'"{escaped}"'
 
 
-def capture_fact(entry: InboxEntry, agent_id: str) -> Path:
+def capture_fact(
+    entry: InboxEntry,
+    agent_id: str,
+    *,
+    extra_frontmatter: Optional[dict] = None,
+) -> Path:
     """Write an inbox entry to disk. Returns the Path of the written file.
 
     Behaviour:
@@ -146,13 +181,17 @@ def capture_fact(entry: InboxEntry, agent_id: str) -> Path:
     Args:
         entry: The InboxEntry to write.
         agent_id: Which spaice-agent instance to write to.
+        extra_frontmatter: Optional dict of additional frontmatter keys
+            (e.g. classifier metadata). Keys may not collide with the
+            standard set (id/created_at/source/category/tags/status).
 
     Returns:
         Path to the written file.
 
     Raises:
         VaultNotFoundError: The agent's vault root doesn't exist.
-        InvalidInboxEntryError: Entry violates content constraints.
+        InvalidInboxEntryError: Entry violates content constraints OR
+            extra_frontmatter contains a reserved key.
     """
     paths = VaultPaths.for_agent(agent_id)
     paths.inbox.mkdir(parents=True, exist_ok=True)
@@ -173,6 +212,7 @@ def capture_fact(entry: InboxEntry, agent_id: str) -> Path:
         source=entry.source,
         category=entry.category,
         tags=entry.tags,
+        extra=extra_frontmatter,
     )
 
     body = entry.text.strip() + "\n"
