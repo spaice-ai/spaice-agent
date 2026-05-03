@@ -374,7 +374,9 @@ def test_doctor_bundled_skills_ok_when_installed(tmp_path, monkeypatch, capsys):
     cmd_doctor(FakeArgs(agent_id="testbot"))
     captured = capsys.readouterr()
     assert "✓ Bundled vetted skills installed" in captured.out
-    assert "8 skills" in captured.out
+    # Assert skill count tracks BUNDLED_SKILLS (don't hardcode — list grows).
+    from spaice_agent.cli import BUNDLED_SKILLS
+    assert f"{len(BUNDLED_SKILLS)} skills" in captured.out
 
 
 def test_doctor_antigravity_is_required_check(tmp_path, monkeypatch, capsys):
