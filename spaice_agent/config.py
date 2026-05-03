@@ -177,6 +177,7 @@ class _Consensus(BaseModel):
     enabled: bool
     daily_fire_cap: int = Field(ge=0)
     pipeline_timeout_s: float = Field(gt=0)
+    advisory_suppress_turns: int = Field(default=3, ge=0)  # FW-1: turns to skip advisory after a tool call
     pipeline: List[_PipelineStage]
     triggers: _ConsensusTriggers
 

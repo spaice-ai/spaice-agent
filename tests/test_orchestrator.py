@@ -146,10 +146,6 @@ async def test_research_word_fires_search_only(
             "spaice_agent.orchestrator.run_search",
             new=AsyncMock(return_value=fake_search),
         ),
-        patch(
-            "spaice_agent.orchestrator.run_consensus",
-            new=AsyncMock(),
-        ) as mock_consensus,
     ):
         result = await handle_message(
             "please research fast ethernet switches",
@@ -157,18 +153,19 @@ async def test_research_word_fires_search_only(
         )
     assert any("search" in s for s in result.fired)
     assert result.search is fake_search
+    # FW-1: consensus no longer fires inline — this was a `research` trigger (search only)
     assert result.consensus is None
-    mock_consensus.assert_not_called()
+    assert result.consensus_advisory is None  # research ≠ consensus trigger
     # Reply should be the search results markdown block
     assert result.reply is not None
     assert "example.com" in result.reply
 
 
 @pytest.mark.asyncio
-async def test_analyse_word_fires_both_pipelines(
+async def test_analyse_word_fires_search_and_emits_advisory(
     config, counter, tmp_path, monkeypatch,
 ):
-    """`analyse` word: both search AND consensus fire."""
+    """`analyse` word: search fires inline; consensus advisory emitted (NOT inline call)."""
     creds_dir = tmp_path / "cred-store"
     creds_dir.mkdir()
     for name, value in [("exa", "e"), ("openrouter", "o")]:
@@ -189,43 +186,66 @@ async def test_analyse_word_fires_both_pipelines(
             "spaice_agent.orchestrator.run_search",
             new=AsyncMock(return_value=_search_with_one_hit()),
         ),
-        patch(
-            "spaice_agent.orchestrator.run_consensus",
-            new=AsyncMock(return_value=_consensus_result("consensus reply")),
-        ),
     ):
         result = await handle_message(
             "please analyse the dmarc policy", config, counter=counter,
         )
     assert any("search" in s for s in result.fired)
-    assert any("consensus" in s for s in result.fired)
-    # Consensus reply wins over search markdown
-    assert result.reply == "consensus reply"
+    # FW-1: consensus is NOT called inline — advisory emitted instead
+    assert result.consensus is None
+    assert result.consensus_advisory is not None
+    assert "Consensus Advisory" in result.consensus_advisory
+    # Search reply is the fallback (no inline consensus reply)
+    assert result.reply is not None
+    assert "example.com" in result.reply
 
 
 @pytest.mark.asyncio
-async def test_consensus_daily_cap_skips(config, counter, tmp_path, monkeypatch):
-    """When consensus cap is exhausted, skipped recorded + reply falls back."""
-    # Pre-exhaust the counter
-    for _ in range(config.consensus.daily_fire_cap):
-        counter.check_and_fire("consensus", config.consensus.daily_fire_cap)
+async def test_consensus_advisory_suppression(config, counter, tmp_path, monkeypatch):
+    """FW-1: advisory suppressed if turns_since_call < advisory_suppress_turns."""
+    import json
+    # State lives under config.memory_root/state, not tmp_path/state directly
+    state_dir = config.memory_root / "state"
+    state_dir.mkdir(parents=True, exist_ok=True)
+    # Simulate a recent consensus call — turns_since_call = 0
+    (state_dir / "last_consensus_turn.json").write_text(json.dumps({"turns_since_call": 0}))
 
-    with (
-        patch(
-            "spaice_agent.orchestrator.recall",
-            new=AsyncMock(return_value=_recall_empty()),
-        ),
-        patch(
-            "spaice_agent.orchestrator.run_consensus",
-            new=AsyncMock(),
-        ) as mock_consensus,
+    with patch(
+        "spaice_agent.orchestrator.recall",
+        new=AsyncMock(return_value=_recall_empty()),
     ):
         result = await handle_message(
             "please review this plan", config, counter=counter,
         )
-    assert "consensus" in result.skipped
-    assert "cap exhausted" in result.skipped["consensus"]
-    mock_consensus.assert_not_called()
+    # Advisory should be suppressed — flag set, no string emitted
+    assert result.consensus_advisory is None
+    assert result.advisory_suppressed is True
+
+
+@pytest.mark.asyncio
+async def test_suppression_counter_advances_every_turn(config, counter, tmp_path):
+    """FW-1: advance_suppression_counter runs at end of every turn.
+
+    Regression guard: earlier build referenced undefined `_increment_turns_since_call`
+    which caused a NameError at runtime. This test exercises the actual counter path.
+    """
+    import json
+    from spaice_agent.advisory import advance_suppression_counter
+
+    state_path = config.memory_root / "state" / "last_consensus_turn.json"
+    # Seed counter at 2
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(json.dumps({"turns_since_call": 2}))
+
+    with patch(
+        "spaice_agent.orchestrator.recall",
+        new=AsyncMock(return_value=_recall_empty()),
+    ):
+        await handle_message("hello", config, counter=counter)
+
+    # Counter should have advanced from 2 → 3
+    data = json.loads(state_path.read_text())
+    assert data["turns_since_call"] == 3
 
 
 @pytest.mark.asyncio
@@ -239,11 +259,11 @@ async def test_empty_message_noop(config, counter):
 async def test_recall_failure_does_not_abort_pipeline(
     config, counter, tmp_path, monkeypatch,
 ):
-    """recall raising should not prevent consensus from firing."""
+    """recall raising should not prevent advisory + search fallback."""
     creds_dir = tmp_path / "cred-store"
     creds_dir.mkdir()
-    k = creds_dir / "openrouter.key"
-    k.write_text("o")
+    k = creds_dir / "exa.key"
+    k.write_text("e")
     import os
     os.chmod(k, 0o600)
     monkeypatch.setattr(
@@ -258,16 +278,18 @@ async def test_recall_failure_does_not_abort_pipeline(
             "spaice_agent.orchestrator.recall", new=broken_recall,
         ),
         patch(
-            "spaice_agent.orchestrator.run_consensus",
-            new=AsyncMock(return_value=_consensus_result("ok")),
+            "spaice_agent.orchestrator.run_search",
+            new=AsyncMock(return_value=_search_with_one_hit()),
         ),
     ):
         result = await handle_message(
-            "please review it", config, counter=counter,
+            "please research the latest", config, counter=counter,
         )
     assert "recall" in result.skipped
     assert "disk full" in result.skipped["recall"]
-    assert result.reply == "ok"
+    # FW-1: no inline consensus; search reply comes through
+    assert result.reply is not None
+    assert "example.com" in result.reply
 
 
 # ---------------------------------------------------------------------------
