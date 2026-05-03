@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -401,6 +402,58 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             False,
             "run `spaice-agent skills antigravity-install`",
         )
+
+    # ------------------------------------------------------------------
+    # Phase 3A — Memory vault + BuildGuard health
+    # ------------------------------------------------------------------
+    # Only meaningful once config is loadable (memory_root comes from there).
+    if cfg_path.exists():
+        try:
+            from spaice_agent.config import load_agent_config
+            _cfg = load_agent_config(agent_id)
+        except Exception:
+            _cfg = None
+
+        if _cfg is not None:
+            vault_root = Path(_cfg.memory_root).expanduser()
+            check(
+                "Memory vault root exists",
+                vault_root.is_dir(),
+                str(vault_root),
+            )
+            if vault_root.is_dir():
+                check(
+                    "Memory vault root writable",
+                    os.access(vault_root, os.W_OK),
+                    str(vault_root),
+                )
+                for sub in ("_inbox", "_continuity", "_dashboard"):
+                    check(
+                        f"Vault {sub}/ present",
+                        (vault_root / sub).is_dir(),
+                        str(vault_root / sub),
+                    )
+
+    # BuildGuard log dir (holds openrouter-*.jsonl) must be writable when present.
+    # Created lazily on first pipeline call, so its absence is informational.
+    build_log_dir = Path.home() / ".spaice-agents" / agent_id / "logs"
+    if build_log_dir.is_dir():
+        check(
+            "BuildGuard log dir writable (openrouter-*.jsonl)",
+            os.access(build_log_dir, os.W_OK),
+            str(build_log_dir),
+        )
+    else:
+        # Info only — no failure. BuildGuard mkdirs on first call.
+        print(f"  · BuildGuard log dir not yet created  (will appear at {build_log_dir} on first pipeline call)")
+
+    # BuildGuard exemption file MUST NOT linger (tactical escape-hatch only)
+    exemption_path = Path.home() / ".spaice-agents" / agent_id / "build-exemption.yaml"
+    check(
+        "BuildGuard exemption absent (no lingering escape-hatch)",
+        not exemption_path.exists(),
+        str(exemption_path) if exemption_path.exists() else "",
+    )
 
     return 0 if ok else 1
 
