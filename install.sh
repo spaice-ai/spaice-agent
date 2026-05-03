@@ -5,12 +5,14 @@
 #   curl -sSL https://spaice.ai/install.sh | sh -s <agent_id>
 #   curl -sSL https://spaice.ai/install.sh | sh -s jarvis
 #   curl -sSL https://spaice.ai/install.sh | sh -s jarvis v0.1.0  # pin version
+#   NO_ANTIGRAVITY=1 curl -sSL ... | sh -s jarvis  # skip skill library (saves 66MB + 1443 skills)
 #
 # What it does:
 #   1. Locates the Hermes venv
 #   2. pip installs spaice-agent into that venv
 #   3. Runs `spaice-agent install --with-config <agent_id>`
-#   4. Runs `spaice-agent doctor <agent_id>` and prints next steps
+#   4. Installs the antigravity-awesome-skills library (1,443+ skills)
+#   5. Runs `spaice-agent doctor <agent_id>` and prints next steps
 set -eu
 
 # ---------- args ----------
@@ -92,13 +94,33 @@ echo "  ✓ Installed spaice-agent $INSTALLED_VER"
 
 # ---------- step 3: install hook + config ----------
 echo ""
-echo "→ Step 3/4: Installing hook + config scaffold for $AGENT_ID..."
+echo "→ Step 3/5: Installing hook + config scaffold for $AGENT_ID..."
 
 "$VENV_CLI" install "$AGENT_ID" --with-config
 
-# ---------- step 4: doctor ----------
+# ---------- step 4: antigravity-awesome-skills (optional, default on) ----------
 echo ""
-echo "→ Step 4/4: Running doctor..."
+echo "→ Step 4/5: Installing skill library (antigravity-awesome-skills)..."
+HERMES_SKILLS_DIR="$HOME/.hermes/skills/antigravity"
+if [ "${NO_ANTIGRAVITY:-0}" = "1" ]; then
+  echo "  Skipped (NO_ANTIGRAVITY=1)"
+elif [ -d "$HERMES_SKILLS_DIR" ] && [ "$(ls -A "$HERMES_SKILLS_DIR" 2>/dev/null | head -1)" ]; then
+  echo "  Skipped (already installed at $HERMES_SKILLS_DIR)"
+  echo "  To refresh: rm -rf $HERMES_SKILLS_DIR && re-run installer"
+elif ! command -v npx >/dev/null 2>&1; then
+  echo "  ⚠ npx not found — skipping skill library"
+  echo "    Install Node.js (brew install node / apt install nodejs) and re-run"
+else
+  if npx --yes antigravity-awesome-skills --path "$HERMES_SKILLS_DIR" 2>&1 | tail -5; then
+    echo "  ✓ Skill library installed at $HERMES_SKILLS_DIR"
+  else
+    echo "  ⚠ Skill library install failed — agent works without it, but with fewer skills"
+  fi
+fi
+
+# ---------- step 5: doctor ----------
+echo ""
+echo "→ Step 5/5: Running doctor..."
 "$VENV_CLI" doctor "$AGENT_ID" || true
 
 echo ""

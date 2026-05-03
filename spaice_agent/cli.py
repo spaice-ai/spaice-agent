@@ -348,7 +348,97 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         except Exception as exc:
             check("Agent config loads + validates", False, str(exc))
 
+    # Antigravity skill library (informational — not required for hook to work)
+    antigravity_dir = Path.home() / ".hermes" / "skills" / "antigravity"
+    if antigravity_dir.exists():
+        skill_count = len(list(antigravity_dir.glob("*/SKILL.md")))
+        check(
+            "Antigravity skill library installed",
+            skill_count > 0,
+            f"{skill_count} skills at {antigravity_dir}",
+        )
+    else:
+        # Not a hard failure — optional
+        print(f"  ○ Antigravity skill library  (not installed — run `spaice-agent skills install`)")
+
     return 0 if ok else 1
+
+
+# ---------------------------------------------------------------------------
+# skills — manage the antigravity-awesome-skills library
+# ---------------------------------------------------------------------------
+
+def cmd_skills(args: argparse.Namespace) -> int:
+    action = args.skills_action
+    antigravity_dir = Path.home() / ".hermes" / "skills" / "antigravity"
+
+    if action == "install":
+        if antigravity_dir.exists() and not args.force:
+            count = len(list(antigravity_dir.glob("*/SKILL.md")))
+            print(f"Already installed at {antigravity_dir} ({count} skills).")
+            print("Use --force to reinstall, or `spaice-agent skills update` to refresh.")
+            return 0
+        if antigravity_dir.exists() and args.force:
+            shutil.rmtree(antigravity_dir)
+        if not shutil.which("npx"):
+            print("✗ npx not found. Install Node.js first:")
+            print("    macOS:  brew install node")
+            print("    Linux:  apt install nodejs npm  (or see nodejs.org)")
+            return 1
+        print(f"→ Installing antigravity-awesome-skills to {antigravity_dir}...")
+        try:
+            subprocess.run(
+                ["npx", "--yes", "antigravity-awesome-skills", "--path", str(antigravity_dir)],
+                check=True,
+            )
+        except subprocess.CalledProcessError as exc:
+            print(f"✗ Install failed: {exc}")
+            return 1
+        count = len(list(antigravity_dir.glob("*/SKILL.md")))
+        print(f"✓ Installed {count} skills at {antigravity_dir}")
+        return 0
+
+    elif action == "update":
+        if not antigravity_dir.exists():
+            print(f"Not installed. Run `spaice-agent skills install` first.")
+            return 1
+        print(f"→ Removing old install...")
+        shutil.rmtree(antigravity_dir)
+        print(f"→ Reinstalling latest from antigravity-awesome-skills...")
+        try:
+            subprocess.run(
+                ["npx", "--yes", "antigravity-awesome-skills", "--path", str(antigravity_dir)],
+                check=True,
+            )
+        except subprocess.CalledProcessError as exc:
+            print(f"✗ Update failed: {exc}")
+            return 1
+        count = len(list(antigravity_dir.glob("*/SKILL.md")))
+        print(f"✓ Updated to latest ({count} skills)")
+        return 0
+
+    elif action == "remove":
+        if not antigravity_dir.exists():
+            print("Not installed — nothing to remove.")
+            return 0
+        shutil.rmtree(antigravity_dir)
+        print(f"✓ Removed {antigravity_dir}")
+        return 0
+
+    elif action == "status":
+        if not antigravity_dir.exists():
+            print("Antigravity skill library: NOT INSTALLED")
+            print("  Install with: spaice-agent skills install")
+            return 1
+        count = len(list(antigravity_dir.glob("*/SKILL.md")))
+        size_mb = sum(f.stat().st_size for f in antigravity_dir.rglob("*") if f.is_file()) // (1024 * 1024)
+        print(f"Antigravity skill library: INSTALLED")
+        print(f"  Path:   {antigravity_dir}")
+        print(f"  Skills: {count}")
+        print(f"  Size:   {size_mb} MB")
+        return 0
+
+    return 1
 
 
 # ---------------------------------------------------------------------------
@@ -409,6 +499,22 @@ def main(argv: Optional[List[str]] = None) -> int:
     )
     p_doctor.add_argument("agent_id", help="Agent ID to check")
     p_doctor.set_defaults(func=cmd_doctor)
+
+    # skills — manage the antigravity-awesome-skills library
+    p_skills = sub.add_parser(
+        "skills",
+        help="Manage the antigravity-awesome-skills library (1,443+ skills)",
+    )
+    p_skills.add_argument(
+        "skills_action",
+        choices=["install", "update", "remove", "status"],
+        help="Action: install (first time), update (refresh to latest), remove, or status",
+    )
+    p_skills.add_argument(
+        "--force", action="store_true",
+        help="For 'install': overwrite existing library",
+    )
+    p_skills.set_defaults(func=cmd_skills)
 
     args = parser.parse_args(argv)
     return args.func(args)

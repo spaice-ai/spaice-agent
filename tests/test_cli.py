@@ -264,3 +264,90 @@ def test_agent_id_with_hyphens_works(tmp_path, monkeypatch):
     assert exit_code == 0
     assert (tmp_path / ".Hermes" / "hooks" / "spaice-scope-bot").exists()
     assert (tmp_path / ".spaice-agents" / "scope-bot" / "config.yaml").exists()
+
+
+# ---------- skills (antigravity library) ----------
+
+def test_skills_status_not_installed(tmp_path, monkeypatch, capsys):
+    from spaice_agent.cli import cmd_skills
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    exit_code = cmd_skills(FakeArgs(skills_action="status"))
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "NOT INSTALLED" in captured.out
+
+
+def test_skills_status_when_installed(tmp_path, monkeypatch, capsys):
+    from spaice_agent.cli import cmd_skills
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    # Fake a minimal install
+    antigravity = tmp_path / ".hermes" / "skills" / "antigravity"
+    (antigravity / "skill-a").mkdir(parents=True)
+    (antigravity / "skill-a" / "SKILL.md").write_text("---\nname: skill-a\ndescription: test\n---\nbody")
+    (antigravity / "skill-b").mkdir(parents=True)
+    (antigravity / "skill-b" / "SKILL.md").write_text("---\nname: skill-b\ndescription: test\n---\nbody")
+
+    exit_code = cmd_skills(FakeArgs(skills_action="status"))
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert "INSTALLED" in captured.out
+    assert "Skills: 2" in captured.out
+
+
+def test_skills_install_idempotent(tmp_path, monkeypatch, capsys):
+    """Second `skills install` without --force should skip, not error."""
+    from spaice_agent.cli import cmd_skills
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    antigravity = tmp_path / ".hermes" / "skills" / "antigravity"
+    (antigravity / "dummy").mkdir(parents=True)
+    (antigravity / "dummy" / "SKILL.md").write_text("x")
+
+    exit_code = cmd_skills(FakeArgs(skills_action="install", force=False))
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert "Already installed" in captured.out
+
+
+def test_skills_remove_nonexistent(tmp_path, monkeypatch, capsys):
+    from spaice_agent.cli import cmd_skills
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    exit_code = cmd_skills(FakeArgs(skills_action="remove"))
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert "nothing to remove" in captured.out.lower() or "not installed" in captured.out.lower()
+
+
+def test_skills_remove_existing(tmp_path, monkeypatch, capsys):
+    from spaice_agent.cli import cmd_skills
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    antigravity = tmp_path / ".hermes" / "skills" / "antigravity"
+    (antigravity / "dummy").mkdir(parents=True)
+
+    exit_code = cmd_skills(FakeArgs(skills_action="remove"))
+    assert exit_code == 0
+    assert not antigravity.exists()
+
+
+def test_doctor_reports_antigravity_when_present(tmp_path, monkeypatch, capsys):
+    """Doctor should show an ✓ line for antigravity when installed."""
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    cmd_install(FakeArgs(agent_id="testbot", with_config=True))
+    antigravity = tmp_path / ".hermes" / "skills" / "antigravity"
+    (antigravity / "skill-a").mkdir(parents=True)
+    (antigravity / "skill-a" / "SKILL.md").write_text("x")
+
+    cmd_doctor(FakeArgs(agent_id="testbot"))
+    captured = capsys.readouterr()
+    assert "Antigravity skill library installed" in captured.out
+    assert "1 skills" in captured.out
+
+
+def test_doctor_notes_antigravity_when_absent(tmp_path, monkeypatch, capsys):
+    """Doctor should print a ○ line when antigravity not installed."""
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    cmd_install(FakeArgs(agent_id="testbot", with_config=True))
+
+    cmd_doctor(FakeArgs(agent_id="testbot"))
+    captured = capsys.readouterr()
+    assert "Antigravity skill library" in captured.out
+    assert "not installed" in captured.out
