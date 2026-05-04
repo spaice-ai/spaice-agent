@@ -85,15 +85,28 @@ echo ""
 echo "→ Step 1/6: Locating Hermes venv..."
 
 HERMES_VENV=""
-for candidate in \
-  "$HOME/.Hermes/hermes-agent/venv" \
-  "$HOME/.hermes/hermes-agent/venv" \
-  "$HOME/.Hermes/venv"; do
-  if [ -x "$candidate/bin/python" ]; then
-    HERMES_VENV="$candidate"
-    break
+
+# Env-var override first — lets users point at non-standard installs.
+if [ -n "${SPAICE_HERMES_VENV:-}" ]; then
+  if [ -x "$SPAICE_HERMES_VENV/bin/python" ]; then
+    HERMES_VENV="$SPAICE_HERMES_VENV"
+  else
+    echo "✗ SPAICE_HERMES_VENV=$SPAICE_HERMES_VENV does not contain bin/python"
+    exit 1
   fi
-done
+fi
+
+if [ -z "$HERMES_VENV" ]; then
+  for candidate in \
+    "$HOME/.Hermes/hermes-agent/venv" \
+    "$HOME/.hermes/hermes-agent/venv" \
+    "$HOME/.Hermes/venv"; do
+    if [ -x "$candidate/bin/python" ]; then
+      HERMES_VENV="$candidate"
+      break
+    fi
+  done
+fi
 
 # Fall back to following the `hermes-agent` executable's shebang
 if [ -z "$HERMES_VENV" ] && command -v hermes-agent >/dev/null 2>&1; then
@@ -106,8 +119,11 @@ fi
 
 if [ -z "$HERMES_VENV" ]; then
   echo "✗ Could not locate Hermes venv."
-  echo "  Checked: ~/.Hermes/hermes-agent/venv, ~/.hermes/hermes-agent/venv"
-  echo "  Install Hermes first: https://github.com/..."
+  echo "  Checked: ~/.Hermes/hermes-agent/venv, ~/.hermes/hermes-agent/venv, ~/.Hermes/venv"
+  echo ""
+  echo "  spaice-agent is a Hermes plugin — you need Hermes installed first."
+  echo "  If Hermes IS installed but at a non-standard location, point us at it:"
+  echo "      SPAICE_HERMES_VENV=/path/to/venv curl -sSL ... | sh -s $AGENT_ID"
   exit 1
 fi
 
