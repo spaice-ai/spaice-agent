@@ -28,12 +28,30 @@ That's what `spaice-agent` does, running quietly alongside your agent.
 
 ## Quick start
 
+**Fresh machine — installs Hermes + spaice-agent end-to-end:**
+
 ```bash
-# One-line install (creates agent + scaffolds vault) — pins v0.3.0 release
-curl -sSL https://github.com/spaice-ai/spaice-agent/raw/v0.3.0/install.sh | sh -s myagent v0.3.0 --full
+curl -fsSL https://raw.githubusercontent.com/spaice-ai/spaice-agent/v0.3.0/bootstrap.sh | bash
+```
+
+You'll be asked for 5 values:
+
+1. Agent name (defaults to `jarvis`)
+2. OpenRouter API key (covers Opus, DeepSeek V4 Pro, Codex 5.3, auxiliary — one key, whole stack)
+3. Exa API key (web search)
+4. Telegram bot token (from @BotFather)
+5. Telegram user ID allowed to talk to the bot (find via @userinfobot)
+
+Everything else is pre-configured: Opus 4.7 main, DeepSeek V4 Pro for code ≥200 LOC, Codex 5.3 for review, Telegram home channel, local terminal, vault at `~/<agent>/`.
+
+**Already have Hermes installed?** Skip the bootstrap and install spaice-agent directly:
+
+```bash
+# Pinned release
+curl -fsSL https://raw.githubusercontent.com/spaice-ai/spaice-agent/v0.3.0/install.sh | sh -s myagent v0.3.0 --full
 
 # Bleeding edge (main branch — may be unstable)
-curl -sSL https://github.com/spaice-ai/spaice-agent/raw/main/install.sh | sh -s myagent main --full
+curl -fsSL https://raw.githubusercontent.com/spaice-ai/spaice-agent/main/install.sh | sh -s myagent main --full
 ```
 
 The installer:
@@ -43,7 +61,7 @@ The installer:
 - Scaffolds `~/myagent/` as your memory vault
 - Installs the `spaice-agent` CLI shim at `~/.local/bin/`
 
-Then restart Hermes, and check:
+Then check:
 
 ```bash
 # If ~/.local/bin is on your PATH (installer warns if not):
