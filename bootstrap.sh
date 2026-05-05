@@ -313,6 +313,11 @@ platform_toolsets:
   cli: [hermes-cli]
   telegram: [hermes-telegram]
 
+platforms:
+  telegram:
+    enabled: true
+    channel_prompts: {}
+
 agent:
   max_turns: 60
   reasoning_effort: "medium"
