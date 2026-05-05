@@ -12,7 +12,7 @@ import pytest
 from spaice_agent.memory_recall import (
     RecallHit,
     RecallResult,
-    _parse_output,
+    _parse_file_output,
     recall,
 )
 
@@ -23,7 +23,7 @@ from spaice_agent.memory_recall import (
 
 
 def test_parse_empty_output():
-    assert _parse_output("") == []
+    assert _parse_file_output("") == []
 
 
 def test_parse_em_dash_format():
@@ -31,7 +31,7 @@ def test_parse_em_dash_format():
         identity/owner.md — owner info placeholder
         spaice/products/lock.md — RG80 garage roller deadbolt
     """).strip()
-    hits = _parse_output(stdout)
+    hits = _parse_file_output(stdout)
     assert len(hits) == 2
     assert hits[0].path == "identity/owner.md"
     assert hits[0].preview.startswith("owner info placeholder")
@@ -40,7 +40,7 @@ def test_parse_em_dash_format():
 
 def test_parse_ascii_dash_fallback():
     stdout = "some/file.md - ASCII dash separator"
-    hits = _parse_output(stdout)
+    hits = _parse_file_output(stdout)
     assert len(hits) == 1
     assert hits[0].path == "some/file.md"
 
@@ -53,7 +53,7 @@ def test_parse_skips_comments_and_blanks():
         
         # another comment
     """).strip()
-    hits = _parse_output(stdout)
+    hits = _parse_file_output(stdout)
     assert len(hits) == 1
 
 
@@ -63,13 +63,13 @@ def test_parse_skips_lines_without_separator():
         no separator here at all
         identity/b.md — also good
     """).strip()
-    hits = _parse_output(stdout)
+    hits = _parse_file_output(stdout)
     assert len(hits) == 2
 
 
 def test_parse_strips_backticks_around_path():
     stdout = "`identity/a.md` — wrapped in backticks"
-    hits = _parse_output(stdout)
+    hits = _parse_file_output(stdout)
     assert hits[0].path == "identity/a.md"
 
 
@@ -103,7 +103,7 @@ async def test_recall_happy(fake_recall_script):
         "identity/owner.md — owner info placeholder\n"
         "spaice/products/rg80.md — garage roller deadbolt\n"
     )
-    result = await recall("Sydney locks", script_path=script)
+    result = await recall("Sydney locks", script_path=script, db_enabled=False)
     assert result.error is None
     assert len(result.hits) == 2
     assert result.hits[0].path == "identity/owner.md"
@@ -113,7 +113,7 @@ async def test_recall_happy(fake_recall_script):
 @pytest.mark.asyncio
 async def test_recall_empty_message(fake_recall_script):
     script = fake_recall_script("unused output")
-    result = await recall("   ", script_path=script)
+    result = await recall("   ", script_path=script, db_enabled=False)
     assert result.error is None
     assert result.hits == []
 
@@ -122,7 +122,7 @@ async def test_recall_empty_message(fake_recall_script):
 async def test_recall_missing_script(tmp_path):
     """Missing script is silent (no error surfaced to caller's prompt)."""
     absent = tmp_path / "does-not-exist.py"
-    result = await recall("anything", script_path=absent)
+    result = await recall("anything", script_path=absent, db_enabled=False)
     assert result.hits == []
     assert result.error is None  # silent per contract
 
@@ -130,7 +130,7 @@ async def test_recall_missing_script(tmp_path):
 @pytest.mark.asyncio
 async def test_recall_nonzero_exit_reports_error(fake_recall_script):
     script = fake_recall_script("partial", exit_code=2)
-    result = await recall("x", script_path=script)
+    result = await recall("x", script_path=script, db_enabled=False)
     assert result.hits == []
     assert result.error is not None
     assert "exit 2" in result.error
@@ -139,7 +139,7 @@ async def test_recall_nonzero_exit_reports_error(fake_recall_script):
 @pytest.mark.asyncio
 async def test_recall_timeout(fake_recall_script):
     script = fake_recall_script("late output", sleep=0.8)
-    result = await recall("x", script_path=script, timeout_s=0.2)
+    result = await recall("x", script_path=script, timeout_s=0.2, db_enabled=False)
     assert result.hits == []
     assert result.error is not None
     assert "timed out" in result.error
@@ -149,7 +149,7 @@ async def test_recall_timeout(fake_recall_script):
 async def test_recall_respects_max_hits(fake_recall_script):
     lines = "\n".join(f"path/{i}.md — preview {i}" for i in range(20))
     script = fake_recall_script(lines + "\n")
-    result = await recall("x", script_path=script, max_hits=5)
+    result = await recall("x", script_path=script, max_hits=5, db_enabled=False)
     assert len(result.hits) == 5
 
 
@@ -171,8 +171,8 @@ def test_to_markdown_with_error():
 def test_to_markdown_with_hits():
     md = RecallResult(
         hits=[
-            RecallHit(path="a.md", preview="hello"),
-            RecallHit(path="b.md", preview="world"),
+            RecallHit(path="a.md", preview="hello", source="file", score=1.0),
+            RecallHit(path="b.md", preview="world", source="file", score=1.0),
         ],
         elapsed_s=0.01,
         error=None,
@@ -185,7 +185,7 @@ def test_to_markdown_with_hits():
 def test_to_markdown_preview_truncated():
     long_preview = "x" * 500
     md = RecallResult(
-        hits=[RecallHit(path="a.md", preview=long_preview)],
+        hits=[RecallHit(path="a.md", preview=long_preview, source="file", score=1.0)],
         elapsed_s=0,
         error=None,
     ).to_markdown()

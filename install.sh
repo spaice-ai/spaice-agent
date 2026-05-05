@@ -146,19 +146,39 @@ fi
 INSTALLED_VER=$("$VENV_CLI" version)
 echo "  ✓ Installed spaice-agent $INSTALLED_VER"
 
+# ---------- step 2b: memory database init ----------
+echo ""
+echo "→ Step 2b/7: Initialising memory database schema..."
+if "$VENV_CLI" memory init; then
+  echo "  ✓ Memory schema ready"
+else
+  echo "  ⚠ Memory schema init failed — recall pipeline may be degraded."
+  echo "  Run 'spaice-agent memory init' manually to retry."
+fi
+
+# ---------- step 2c: spatial index build ----------
+echo ""
+echo "→ Step 2c/7: Building spatial index (cross-layer links)..."
+if "$VENV_CLI" memory index; then
+  echo "  ✓ Spatial index built"
+else
+  echo "  ⚠ Spatial index build failed — multi-hop retrieval may be degraded."
+  echo "  Run 'spaice-agent memory index' manually to retry."
+fi
+
 # ---------- step 3: install hook + config ----------
 echo ""
-echo "→ Step 3/6: Installing hook + config scaffold for $AGENT_ID..."
+echo "→ Step 3/7: Installing hook + config scaffold for $AGENT_ID..."
 "$VENV_CLI" install "$AGENT_ID" --with-config
 
 # ---------- step 4: bundled vetted skills ----------
 echo ""
-echo "→ Step 4/6: Installing bundled vetted skills..."
+echo "→ Step 4/7: Installing bundled vetted skills..."
 "$VENV_CLI" skills bundled-install
 
 # ---------- step 5: antigravity vendored bundle (standardised) ----------
 echo ""
-echo "→ Step 5/6: Installing vendored antigravity skill library..."
+echo "→ Step 5/7: Installing vendored antigravity skill library..."
 "$VENV_CLI" skills antigravity-install
 
 # ---------- step 6: install CLI dispatcher shim ----------
@@ -175,7 +195,7 @@ echo "→ Step 5/6: Installing vendored antigravity skill library..."
 # packaging/spaice-agent-shim.sh. We extract that file from the
 # installed site-packages location and copy it to ~/.local/bin/.
 echo ""
-echo "→ Step 6/6: Installing CLI dispatcher shim to ~/.local/bin/..."
+echo "→ Step 6/7: Installing CLI dispatcher shim to ~/.local/bin/..."
 SHIM_SOURCE=$("$VENV_PY" -c "
 import pathlib, sys
 try:

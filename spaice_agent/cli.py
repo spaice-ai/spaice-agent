@@ -843,6 +843,33 @@ def cmd_recall(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_memory_init(args: argparse.Namespace) -> int:
+    """CLI: spaice-agent memory init"""
+    from spaice_agent.memory.db_store import init_db
+    try:
+        created = init_db()
+        if created:
+            print("✓ Memory schema created (pgvector + memory_entries + memory_links)")
+        else:
+            print("✓ Memory schema already up to date")
+        return 0
+    except Exception as exc:
+        print(f"✗ DB init failed: {exc}", file=sys.stderr)
+        return 1
+
+
+def cmd_memory_index(args: argparse.Namespace) -> int:
+    """CLI: spaice-agent memory index"""
+    from spaice_agent.memory.db_store import build_spatial_index
+    try:
+        stats = build_spatial_index()
+        print(f"✓ Spatial index rebuilt: {stats}")
+        return 0
+    except Exception as exc:
+        print(f"✗ Index build failed: {exc}", file=sys.stderr)
+        return 1
+
+
 def cmd_summarise(args: argparse.Namespace) -> int:
     import asyncio
 
@@ -1060,6 +1087,20 @@ def main(argv: Optional[List[str]] = None) -> int:
     p_audit.add_argument("agent_id", help="Agent ID")
     p_audit.add_argument("--json", action="store_true", help="Emit findings as JSON")
     p_audit.set_defaults(func=cmd_audit)
+
+    p_memory = sub.add_parser(
+        "memory", help="Manage memory database"
+    )
+    p_memory_sub = p_memory.add_subparsers(dest="memory_action")
+    p_mem_init = p_memory_sub.add_parser(
+        "init", help="Initialise memory schema (idempotent)"
+    )
+    p_mem_init.set_defaults(func=cmd_memory_init)
+    p_mem_index = p_memory_sub.add_parser(
+        "index", help="Rebuild spatial index (cross-layer links)"
+    )
+    p_mem_index.add_argument("--agent-id", default="jarvis", help="Agent ID")
+    p_mem_index.set_defaults(func=cmd_memory_index)
 
     args = parser.parse_args(argv)
     return args.func(args)
