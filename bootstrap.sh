@@ -21,7 +21,7 @@
 #   - Vault:          ~/<agent>/ (Dewey 8-layer memory system)
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/spaice-ai/spaice-agent/v0.3.0/bootstrap.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/spaice-ai/spaice-agent/v0.3.2/bootstrap.sh | bash
 #
 # Non-interactive (CI / automation):
 #   Export these BEFORE piping to bash:
@@ -458,7 +458,7 @@ fi
 # ============================================================================
 step "4/5" "spaice-agent framework"
 
-SPAICE_INSTALLER_URL="${SPAICE_INSTALLER_URL:-https://raw.githubusercontent.com/spaice-ai/spaice-agent/v0.3.1/install.sh}"
+SPAICE_INSTALLER_URL="${SPAICE_INSTALLER_URL:-https://raw.githubusercontent.com/spaice-ai/spaice-agent/v0.3.2/install.sh}"
 
 # Inject the Hermes venv path so install.sh skips its own discovery
 export SPAICE_HERMES_VENV="$HERMES_VENV"
@@ -484,10 +484,10 @@ case "$SPAICE_SHEBANG" in
     fail "spaice-agent installer doesn't look like a shell script (shebang: $SPAICE_SHEBANG)"
     ;;
 esac
-if ! "$SPAICE_INTERP" "$SPAICE_INSTALLER" "$SPAICE_AGENT_NAME" v0.3.1 --full; then
+if ! "$SPAICE_INTERP" "$SPAICE_INSTALLER" "$SPAICE_AGENT_NAME" v0.3.2 --full; then
   rm -f "$SPAICE_INSTALLER"
   fail "spaice-agent install failed. Hermes is installed + configured; re-run:
-      curl -fsSL $SPAICE_INSTALLER_URL | $SPAICE_INTERP -s $SPAICE_AGENT_NAME v0.3.1 --full"
+      curl -fsSL $SPAICE_INSTALLER_URL | $SPAICE_INTERP -s $SPAICE_AGENT_NAME v0.3.2 --full"
 fi
 rm -f "$SPAICE_INSTALLER"
 # shellcheck disable=SC2064

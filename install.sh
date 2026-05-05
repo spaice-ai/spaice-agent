@@ -3,7 +3,7 @@
 #
 # Usage:
 #   curl -sSL https://spaice.ai/install.sh | sh -s <agent_id>
-#   curl -sSL https://spaice.ai/install.sh | sh -s jarvis v0.2.0  # pin version
+#   curl -sSL https://spaice.ai/install.sh | sh -s jarvis v0.3.2  # pin version
 #
 #   # Optional flags (prefix with --):
 #   curl -sSL https://spaice.ai/install.sh | sh -s <agent_id> <version> --with-vault

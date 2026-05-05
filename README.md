@@ -2,7 +2,7 @@
 
 **Persistent memory + continuity loop for Hermes-based AI agents.** Capture facts as you work, classify them automatically, resume where you left off next session. A vault your agent actually reads.
 
-[![Version](https://img.shields.io/badge/version-0.3.0-blue.svg)](https://github.com/spaice-ai/spaice-agent/releases)
+[![Version](https://img.shields.io/badge/version-0.3.2-blue.svg)](https://github.com/spaice-ai/spaice-agent/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](pyproject.toml)
 [![Tests](https://img.shields.io/badge/tests-596%2F596-green.svg)](tests/)
@@ -18,7 +18,7 @@
 - **Indexes** the vault for search-first recall across past conversations
 - **Audits** the vault for broken cross-references, frontmatter gaps, orphan files
 
-All markdown. Obsidian-compatible. No database. Under git.
+All markdown. Obsidian-compatible. Markdown vault + pgvector recall database. Under git.
 
 ## Why
 
@@ -31,7 +31,7 @@ That's what `spaice-agent` does, running quietly alongside your agent.
 **Fresh machine — installs Hermes + spaice-agent end-to-end:**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/spaice-ai/spaice-agent/v0.3.0/bootstrap.sh | bash
+curl -fsSL https://raw.githubusercontent.com/spaice-ai/spaice-agent/v0.3.2/bootstrap.sh | bash
 ```
 
 You'll be asked for 5 values:
@@ -48,7 +48,7 @@ Everything else is pre-configured: Opus 4.7 main, DeepSeek V4 Pro for code ≥20
 
 ```bash
 # Pinned release
-curl -fsSL https://raw.githubusercontent.com/spaice-ai/spaice-agent/v0.3.0/install.sh | sh -s myagent v0.3.0 --full
+curl -fsSL https://raw.githubusercontent.com/spaice-ai/spaice-agent/v0.3.2/install.sh | sh -s myagent v0.3.2 --full
 
 # Bleeding edge (main branch — may be unstable)
 curl -fsSL https://raw.githubusercontent.com/spaice-ai/spaice-agent/main/install.sh | sh -s myagent main --full
@@ -56,6 +56,7 @@ curl -fsSL https://raw.githubusercontent.com/spaice-ai/spaice-agent/main/install
 
 The installer:
 - Installs spaice-agent package into your Hermes venv
+- Initialises the memory database schema (pgvector + spatial index)
 - Sets up the Hermes hook + per-agent config
 - Installs bundled skills (memory-conventions, build-stack, and utility skills)
 - Scaffolds `~/myagent/` as your memory vault
@@ -96,6 +97,8 @@ The vault at `~/<agent>/` is structured markdown organised into three tiers:
 
 The miner pulls durable facts from your Hermes session JSONLs, drops classifier drafts into `_inbox/`, and triage promotes them to the right shelf based on confidence + `CATEGORISATION.md` rules. At session end, the summariser writes `_continuity/LATEST.md` — that's what your next "continue" reads first.
 
+A pgvector-backed recall database (`memory_entries` + `memory_links`) provides sub-100ms ILIKE text search with optional semantic vector enhancement and multi-hop traversal across linked entries (CORRECTS, RELATED_TO, CASCADES_FROM).
+
 Full detail: the bundled `memory-conventions` skill (loaded automatically by agents on install).
 
 ## Vault layout
@@ -133,6 +136,8 @@ spaice-agent list                        Show all installed agents
 spaice-agent upgrade                     Refresh package + skills + shim
 spaice-agent doctor <agent_id>           Health check (vault, hook, creds)
 spaice-agent version                     Print installed version
+spaice-agent memory init                 Initialise pgvector schema
+spaice-agent memory index                Rebuild spatial index (cross-layer)
 
 spaice-agent vault scaffold <agent_id>   Write vault skeleton + conventions
 spaice-agent mine <agent_id>             Scan sessions, draft to _inbox/
@@ -200,10 +205,10 @@ Pre-push hook at `scripts/pre-push.sh` fires a Codex review on the diff (see [CO
 
 ## Roadmap
 
-**v0.3.0 (current):** memory conventions + CLI shim routing + packaged scripts.
+**v0.3.2 (current):** pgvector memory backend — db_store.py with spatial index, multi-hop retrieval, memory init + index CLI subcommands.
 
 **v0.3.1 (next):**
-- Cron scheduler — `spaice-agent cron install <agent_id>` registers 4 jobs: hourly mine, hourly dashboards, daily triage 03:00, nightly memory lint 04:00.
+- Cron scheduler — `spaice-agent cron install <agent_id>` registers 4 jobs: hourly mine, hourly dashboards, daily triage 03:00, nightly memory lint 05:00.
 - Post-turn continuity hook — auto-regenerate `_continuity/LATEST.md` after each session (debounced, atomic, trailing-edge catch-up).
 - Dashboard shelf split — generic dashboards in the package, custom dashboards in the user's vault.
 
