@@ -115,7 +115,7 @@ def init_db(workspace_id: str = "jozef") -> bool:
         # This prevents dimension mismatches when the primary model fails
         # and the fallback (all-MiniLM-L6-v2, 384d) takes over.
         embedder = _get_embedder()
-        embed_dim = embedder.get_sentence_embedding_dimension()
+        embed_dim = embedder.get_embedding_dimension()
 
         # Check if tables already exist
         cur.execute(
@@ -483,7 +483,7 @@ def search_and_update(
         SET access_count = access_count + 1,
             accessed_at = %s,
             updated_at = %s
-        WHERE workspace_id = 'jozef' AND id = ANY(%s)
+        WHERE workspace_id = 'jozef' AND id = ANY(%s::uuid[])
     """
     batch_params = (now, now, ids)
 
