@@ -82,7 +82,7 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 
 # ---------- step 1: find Hermes venv ----------
 echo ""
-echo "→ Step 1/6: Locating Hermes venv..."
+echo "→ Step 1/7: Locating Hermes venv..."
 
 HERMES_VENV=""
 
@@ -135,7 +135,7 @@ echo "  Found: $HERMES_VENV"
 
 # ---------- step 2: pip install ----------
 echo ""
-echo "→ Step 2/6: Installing spaice-agent package..."
+echo "→ Step 2/7: Installing spaice-agent package..."
 echo "  $VENV_PIP install --upgrade \"$PKG_SPEC\""
 
 if ! "$VENV_PIP" install --upgrade --quiet "$PKG_SPEC"; then
