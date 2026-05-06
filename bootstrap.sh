@@ -15,6 +15,11 @@
 #   - Main model:     anthropic/claude-opus-4.7         (framework / reasoning)
 #   - Code author:    deepseek/deepseek-v4-pro          (≥200 LOC code gen)
 #   - Code reviewer:  openai/gpt-5.3-codex              (adversarial review)
+#
+#   Consensus pipeline (dual-mode per Jozef 2026-05-06):
+#     thinking: deepseek/deepseek-v4-pro → openai/gpt-5.5 → deepseek/deepseek-v4-pro → opus-4.7
+#     coding:   anthropic/claude-opus-4.7 → openai/gpt-5.3-codex → deepseek/deepseek-v4-pro → opus-4.7
+#
 #   - Auxiliary:      auto (Gemini Flash via OpenRouter)
 #   - Platform:       Telegram, CLI
 #   - Terminal:       local

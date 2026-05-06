@@ -35,10 +35,12 @@ def build_use_consensus_tool(agent_id: str) -> Dict[str, Any]:
     descriptor: Dict[str, Any] = {
         "name": "use_consensus",
         "description": (
-            "Fire 3-chair consensus panel (Opus → GPT-5-codex → DeepSeek → "
-            "Opus synth). Cost: $0.10-0.30. Latency: 30-90s. Use sparingly "
-            "for architecture decisions, schema freezes, approach lock-in. "
-            "REQUIRES caller tool-budget ≥120s."
+            "Fire 3-chair consensus panel. Two modes: thinking (DeepSeek V4 Pro "
+            "→ GPT-5.5 → DeepSeek V4 Pro → Opus synth) for architecture/planning; "
+            "coding (Opus 4.7 → Codex 5.3 → DeepSeek V4 Pro → Opus synth) for "
+            "framework/code review. Cost: $0.10-0.30. Latency: 30-90s. Use "
+            "sparingly for architecture decisions, schema freezes, approach "
+            "lock-in. REQUIRES caller tool-budget ≥120s."
         ),
         "parameters": {
             "type": "object",
