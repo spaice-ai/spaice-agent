@@ -212,7 +212,7 @@ Pre-push hook at `scripts/pre-push.sh` fires a Codex review on the diff (see [CO
 - Post-turn continuity hook — auto-regenerate `_continuity/LATEST.md` after each session (debounced, atomic, trailing-edge catch-up).
 - Dashboard shelf split — generic dashboards in the package, custom dashboards in the user's vault.
 
-**v0.4+:** pluggable cron backends (launchd / crontab / systemd), Hermes-tool native wrappers, multi-agent shared continuity.
+**v0.4+:** Hermes-tool native wrappers, multi-agent shared continuity, OS-level cron backends (lower priority — Hermes' internal scheduler already covers the core use case).
 
 See [RELEASE_NOTES.md](RELEASE_NOTES.md) for detailed release history.
 
