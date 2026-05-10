@@ -2,6 +2,34 @@
 
 All notable changes to this project will be documented in this file. Format adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project follows [Semantic Versioning](https://semver.org/).
 
+## [0.3.3] — 2026-05-11
+
+### Changed
+- **Doctrine: GitHub canonical, local Gitea mirror.** Earlier internal docs framed local Gitea (`http://127.0.0.1:8300/`) as the primary remote with GitHub as a mirror. That story is retired. Reality: every active repo's `origin` is `github.com/spaice-ai/*`. Public `spaice-ai/spaice-agent` is the **Jarvis release** — the surface a fresh user installs from. Other framework repos (engine, hub, library, assistant, scope) live on private `spaice-ai/*`. Gitea remains running as offline-survival mirror only — never primary, never the source the installer fetches from.
+- Bootstrap and install.sh headers updated to make this canonical-source story explicit so downstream agents bootstrapped via the one-liner inherit the correct mental model from day one.
+- Version pin in bootstrap.sh + install.sh advanced to `v0.3.3`.
+
+### Notes
+- `pyproject.toml` was stuck at 0.3.0 across the v0.3.1 + v0.3.2 commits; this release re-syncs it to 0.3.3 in the same release. No functional regression — the pin is consumed by `pip install spaice-agent @ git+...@<tag>`, and the tag was correct, but `pip show spaice-agent` reported `0.3.0` for installs between 0.3.1 and 0.3.2. Now correct.
+
+## [0.3.2] — 2026-05-08
+
+### Added
+- `consensus` dual-mode pipeline (`use_consensus.py`):
+  - thinking: DeepSeek V4 Pro → GPT-5.5 → DeepSeek V4 Pro → Opus 4.7 synthesis
+  - coding: Opus 4.7 → GPT-5.3 Codex → DeepSeek V4 Pro → Opus 4.7 synthesis
+- `bootstrap.sh` header documents both pipelines so the installer makes the consensus model picks visible.
+
+### Changed
+- `README.md` — deprioritized OS cron backends; Hermes internal scheduler is sufficient for memory cron jobs.
+
+## [0.3.1] — 2026-05-06
+
+### Fixed
+- `install.sh` step numbering corrected (was 1-2/6 → now 1-2/7) — non-functional cosmetic.
+- Bootstrap pin advanced from v0.3.0 → v0.3.1.
+- Stale placeholder URL in `install.sh` replaced with real raw URL; `SPAICE_HERMES_VENV` override path documented.
+
 ## [0.3.0] — 2026-05-04
 
 ### Added

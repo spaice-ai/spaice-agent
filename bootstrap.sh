@@ -25,8 +25,19 @@
 #   - Terminal:       local
 #   - Vault:          ~/<agent>/ (Dewey 8-layer memory system)
 #
+# Source of truth (canonical):
+#   This bootstrap and the agent itself live on PUBLIC GitHub:
+#     https://github.com/spaice-ai/spaice-agent
+#   That repo IS the Jarvis release — what every fresh install pulls from.
+#   Some operators also run a local Gitea mirror (http://127.0.0.1:8300/)
+#   for offline-survival; that is a *secondary mirror only*. Never set
+#   SPAICE_REPO_URL or SPAICE_INSTALLER_URL to a local Gitea path — the
+#   installer should always pull from the canonical GitHub origin so the
+#   running agent stays in lockstep with what was security-reviewed and
+#   tagged.
+#
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/spaice-ai/spaice-agent/v0.3.2/bootstrap.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/spaice-ai/spaice-agent/v0.3.3/bootstrap.sh | bash
 #
 # Non-interactive (CI / automation):
 #   Export these BEFORE piping to bash:
@@ -70,7 +81,7 @@ step()  { printf '\n%s%s[%s]%s %s\n' "$C_BOLD" "$C_BLUE" "$1" "$C_NC" "$2"; }
 cat <<BANNER
 
 ${C_BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_NC}
-${C_BOLD}  spaice-agent bootstrap${C_NC}  ${C_DIM}· memory-first AI · v0.3.0${C_NC}
+${C_BOLD}  spaice-agent bootstrap${C_NC}  ${C_DIM}· memory-first AI · v0.3.3${C_NC}
 ${C_BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_NC}
 
   Installs Hermes + spaice-agent end-to-end.
@@ -463,7 +474,7 @@ fi
 # ============================================================================
 step "4/5" "spaice-agent framework"
 
-SPAICE_INSTALLER_URL="${SPAICE_INSTALLER_URL:-https://raw.githubusercontent.com/spaice-ai/spaice-agent/v0.3.2/install.sh}"
+SPAICE_INSTALLER_URL="${SPAICE_INSTALLER_URL:-https://raw.githubusercontent.com/spaice-ai/spaice-agent/v0.3.3/install.sh}"
 
 # Inject the Hermes venv path so install.sh skips its own discovery
 export SPAICE_HERMES_VENV="$HERMES_VENV"
@@ -489,10 +500,10 @@ case "$SPAICE_SHEBANG" in
     fail "spaice-agent installer doesn't look like a shell script (shebang: $SPAICE_SHEBANG)"
     ;;
 esac
-if ! "$SPAICE_INTERP" "$SPAICE_INSTALLER" "$SPAICE_AGENT_NAME" v0.3.2 --full; then
+if ! "$SPAICE_INTERP" "$SPAICE_INSTALLER" "$SPAICE_AGENT_NAME" v0.3.3 --full; then
   rm -f "$SPAICE_INSTALLER"
   fail "spaice-agent install failed. Hermes is installed + configured; re-run:
-      curl -fsSL $SPAICE_INSTALLER_URL | $SPAICE_INTERP -s $SPAICE_AGENT_NAME v0.3.2 --full"
+      curl -fsSL $SPAICE_INSTALLER_URL | $SPAICE_INTERP -s $SPAICE_AGENT_NAME v0.3.3 --full"
 fi
 rm -f "$SPAICE_INSTALLER"
 # shellcheck disable=SC2064

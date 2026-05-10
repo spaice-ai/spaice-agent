@@ -1,9 +1,19 @@
 #!/usr/bin/env bash
 # SPAICE Agent Framework — one-line installer
 #
+# Source of truth (canonical):
+#   This installer and the agent itself live on PUBLIC GitHub:
+#     https://github.com/spaice-ai/spaice-agent
+#   That repo IS the Jarvis release — what every fresh install pulls from.
+#   Some operators also run a local Gitea mirror (http://127.0.0.1:8300/)
+#   for offline-survival; that is a *secondary mirror only*. Never set
+#   SPAICE_REPO_URL to a local Gitea path — the installer should always
+#   pull from the canonical GitHub origin so the running agent stays in
+#   lockstep with what was security-reviewed and tagged.
+#
 # Usage:
 #   curl -sSL https://spaice.ai/install.sh | sh -s <agent_id>
-#   curl -sSL https://spaice.ai/install.sh | sh -s jarvis v0.3.2  # pin version
+#   curl -sSL https://spaice.ai/install.sh | sh -s jarvis v0.3.3  # pin version
 #
 #   # Optional flags (prefix with --):
 #   curl -sSL https://spaice.ai/install.sh | sh -s <agent_id> <version> --with-vault
